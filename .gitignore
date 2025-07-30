@@ -1,0 +1,163 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+.env.production
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+data/pv_monitoring.db*
+data/reports/*.json
+data/reports/*.csv
+data/reports/*.html
+data/logs/*.log
+data/*.csv
+data/*.json
+
+# Node-RED user directory files (keep structure, ignore data)
+data/flows.json
+data/flows_cred.json
+data/.flows.json.backup
+data/.config.json
+data/.sessions.json
+
+# Backup files
+backup/*.json
+backup/*.flow
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Configuration files with sensitive data
+config/secrets.ini
+config/production.ini
+config/.env
+
+# SSL certificates
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+
+# Database files (keep schema, ignore data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary Node-RED files
+.config.json
+.sessions.json
+
+# Generated documentation
+docs/api/
+
+# Test coverage
+coverage/
+
+# Package-lock for consistency (comment out if using npm)
+# package-lock.json
+
+# Yarn lock file (comment out if using yarn)
+# yarn.lock
