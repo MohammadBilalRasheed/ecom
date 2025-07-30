@@ -1,0 +1,192 @@
+{
+  "device": "SICES GC600",
+  "ip": "192.168.88.6",
+  "port": 502,
+  "unitId": 1,
+  "description": "Genset Controller for Load Management and Control",
+  "registers": {
+    "input_registers": {
+      "genset_status": {
+        "address": 1,
+        "type": "uint16",
+        "unit": "",
+        "description": "Genset Operation Status"
+      },
+      "genset_mode": {
+        "address": 2,
+        "type": "uint16", 
+        "unit": "",
+        "description": "Genset Operation Mode"
+      },
+      "active_power": {
+        "address": 100,
+        "type": "uint32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "Genset Active Power Output"
+      },
+      "reactive_power": {
+        "address": 102,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kVar",
+        "description": "Genset Reactive Power Output"
+      },
+      "apparent_power": {
+        "address": 104,
+        "type": "uint32",
+        "scale": 1000,
+        "unit": "kVA",
+        "description": "Genset Apparent Power Output"
+      },
+      "power_factor": {
+        "address": 106,
+        "type": "int16",
+        "scale": 1000,
+        "unit": "",
+        "description": "Genset Power Factor"
+      },
+      "voltage_l1n": {
+        "address": 110,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L1-N Voltage"
+      },
+      "voltage_l2n": {
+        "address": 111,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L2-N Voltage"
+      },
+      "voltage_l3n": {
+        "address": 112,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L3-N Voltage"
+      },
+      "current_l1": {
+        "address": 120,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L1 Current"
+      },
+      "current_l2": {
+        "address": 121,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L2 Current"
+      },
+      "current_l3": {
+        "address": 122,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L3 Current"
+      },
+      "frequency": {
+        "address": 130,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "Hz",
+        "description": "Genset Frequency"
+      },
+      "engine_speed": {
+        "address": 200,
+        "type": "uint16",
+        "unit": "RPM",
+        "description": "Engine Speed"
+      },
+      "engine_temperature": {
+        "address": 201,
+        "type": "int16",
+        "unit": "°C",
+        "description": "Engine Coolant Temperature"
+      },
+      "oil_pressure": {
+        "address": 202,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "bar",
+        "description": "Engine Oil Pressure"
+      },
+      "fuel_level": {
+        "address": 203,
+        "type": "uint16",
+        "unit": "%",
+        "description": "Fuel Tank Level"
+      },
+      "operating_hours": {
+        "address": 250,
+        "type": "uint32",
+        "unit": "hours",
+        "description": "Total Operating Hours"
+      },
+      "fuel_consumption": {
+        "address": 252,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "L",
+        "description": "Total Fuel Consumption"
+      },
+      "alarms": {
+        "address": 300,
+        "type": "uint32",
+        "unit": "",
+        "description": "Alarm Status Register"
+      },
+      "warnings": {
+        "address": 302,
+        "type": "uint32",
+        "unit": "",
+        "description": "Warning Status Register"
+      }
+    },
+    "holding_registers": {
+      "start_stop_command": {
+        "address": 1000,
+        "type": "uint16",
+        "unit": "",
+        "description": "Start/Stop Command (0=Stop, 1=Start)",
+        "writable": true
+      },
+      "power_setpoint": {
+        "address": 1001,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "%",
+        "description": "Active Power Setpoint",
+        "writable": true
+      },
+      "reactive_power_setpoint": {
+        "address": 1002,
+        "type": "int16",
+        "scale": 10,
+        "unit": "%",
+        "description": "Reactive Power Setpoint",
+        "writable": true
+      },
+      "operation_mode": {
+        "address": 1003,
+        "type": "uint16",
+        "unit": "",
+        "description": "Operation Mode (0=Manual, 1=Auto)",
+        "writable": true
+      },
+      "load_ramp_rate": {
+        "address": 1004,
+        "type": "uint16",
+        "unit": "%/min",
+        "description": "Load Ramp Rate",
+        "writable": true
+      }
+    }
+  },
+  "polling_interval": 3000,
+  "timeout": 5000,
+  "retries": 3
+}

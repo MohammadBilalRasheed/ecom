@@ -1,0 +1,123 @@
+[
+  {
+    "id": "main_tab",
+    "type": "tab", 
+    "label": "Main System",
+    "disabled": false,
+    "info": "Main system initialization and coordination"
+  },
+  {
+    "id": "system_startup",
+    "type": "inject",
+    "name": "System Startup",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "5",
+    "topic": "system/startup",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 100,
+    "z": "main_tab",
+    "wires": [
+      ["system_initializer"]
+    ]
+  },
+  {
+    "id": "system_initializer",
+    "type": "function",
+    "name": "System Initializer",
+    "func": "// Initialize system parameters and global variables\nconst startup = {\n    timestamp: new Date().toISOString(),\n    version: '1.0.0',\n    system: 'Industrial Modbus Power Control',\n    devices: {\n        'Huawei SmartLogger 3000A': {\n            ip: '192.168.88.4',\n            status: 'initializing'\n        },\n        'SICES GC600': {\n            ip: '192.168.88.6', \n            status: 'initializing'\n        },\n        'SICES MC200': {\n            ip: '192.168.88.7',\n            status: 'initializing'\n        }\n    }\n};\n\n// Initialize global variables\nglobal.set('devices', {});\nglobal.set('control', {\n    zeroExportThreshold: 50,\n    loadShareRampRate: 1.0,\n    gensetMinRunTime: 300,\n    gensetCooldownTime: 120,\n    pvPriority: true,\n    gensetRunning: false,\n    lastGensetStop: 0\n});\nglobal.set('manualOverride', {});\nglobal.set('systemStatus', 'starting');\n\nnode.log('Industrial Modbus Power Control System Starting...');\nnode.log('Huawei SmartLogger 3000A: 192.168.88.4');\nnode.log('SICES GC600: 192.168.88.6');\nnode.log('SICES MC200: 192.168.88.7');\n\nmsg.payload = startup;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 350,
+    "y": 100,
+    "z": "main_tab",
+    "wires": [
+      ["status_logger"]
+    ]
+  },
+  {
+    "id": "status_logger",
+    "type": "debug",
+    "name": "System Status",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 550,
+    "y": 100,
+    "z": "main_tab"
+  },
+  {
+    "id": "health_monitor",
+    "type": "inject",
+    "name": "Health Monitor",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "30",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "system/health",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 200,
+    "z": "main_tab",
+    "wires": [
+      ["health_checker"]
+    ]
+  },
+  {
+    "id": "health_checker",
+    "type": "function",
+    "name": "Health Checker",
+    "func": "// Monitor system health and device connectivity\nconst devices = global.get('devices') || {};\nconst now = Date.now();\nconst healthReport = {\n    timestamp: new Date().toISOString(),\n    system_uptime: process.uptime(),\n    devices: {},\n    overall_status: 'healthy'\n};\n\n// Check each device's last update time\nObject.keys(devices).forEach(deviceName => {\n    const device = devices[deviceName];\n    const lastUpdate = new Date(device.timestamp).getTime();\n    const timeSinceUpdate = now - lastUpdate;\n    \n    healthReport.devices[deviceName] = {\n        last_update: device.timestamp,\n        seconds_since_update: Math.round(timeSinceUpdate / 1000),\n        status: timeSinceUpdate < 30000 ? 'online' : 'offline'\n    };\n    \n    if (timeSinceUpdate > 30000) {\n        healthReport.overall_status = 'degraded';\n    }\n});\n\n// Check if any devices are missing\nconst expectedDevices = ['Huawei SmartLogger 3000A', 'SICES GC600', 'SICES MC200'];\nexpectedDevices.forEach(deviceName => {\n    if (!devices[deviceName]) {\n        healthReport.devices[deviceName] = {\n            status: 'no_data',\n            last_update: null,\n            seconds_since_update: null\n        };\n        healthReport.overall_status = 'critical';\n    }\n});\n\nglobal.set('systemHealth', healthReport);\n\nif (healthReport.overall_status !== 'healthy') {\n    node.warn(`System health status: ${healthReport.overall_status}`);\n}\n\nmsg.payload = healthReport;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 350,
+    "y": 200,
+    "z": "main_tab",
+    "wires": [
+      ["health_logger"]
+    ]
+  },
+  {
+    "id": "health_logger",
+    "type": "debug",
+    "name": "Health Status",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 550,
+    "y": 200,
+    "z": "main_tab"
+  }
+]

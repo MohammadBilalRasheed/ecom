@@ -1,0 +1,230 @@
+{
+  "device": "SICES MC200",
+  "ip": "192.168.88.7",
+  "port": 502,
+  "unitId": 1,
+  "description": "Grid Monitoring Controller for Import/Export and Protection",
+  "registers": {
+    "input_registers": {
+      "active_power_total": {
+        "address": 1,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "Total Active Power (+ = Import, - = Export)"
+      },
+      "reactive_power_total": {
+        "address": 3,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kVar",
+        "description": "Total Reactive Power"
+      },
+      "apparent_power_total": {
+        "address": 5,
+        "type": "uint32",
+        "scale": 1000,
+        "unit": "kVA",
+        "description": "Total Apparent Power"
+      },
+      "power_factor_total": {
+        "address": 7,
+        "type": "int16",
+        "scale": 1000,
+        "unit": "",
+        "description": "Total Power Factor"
+      },
+      "active_power_l1": {
+        "address": 10,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "L1 Active Power"
+      },
+      "active_power_l2": {
+        "address": 12,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "L2 Active Power"
+      },
+      "active_power_l3": {
+        "address": 14,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "L3 Active Power"
+      },
+      "voltage_l1n": {
+        "address": 20,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L1-N Voltage"
+      },
+      "voltage_l2n": {
+        "address": 21,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L2-N Voltage"
+      },
+      "voltage_l3n": {
+        "address": 22,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L3-N Voltage"
+      },
+      "voltage_l1l2": {
+        "address": 23,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L1-L2 Voltage"
+      },
+      "voltage_l2l3": {
+        "address": 24,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L2-L3 Voltage"
+      },
+      "voltage_l3l1": {
+        "address": 25,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "L3-L1 Voltage"
+      },
+      "current_l1": {
+        "address": 30,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L1 Current"
+      },
+      "current_l2": {
+        "address": 31,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L2 Current"
+      },
+      "current_l3": {
+        "address": 32,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "A",
+        "description": "L3 Current"
+      },
+      "frequency": {
+        "address": 40,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "Hz",
+        "description": "Grid Frequency"
+      },
+      "import_energy_total": {
+        "address": 50,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Total Import Energy"
+      },
+      "export_energy_total": {
+        "address": 52,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Total Export Energy"
+      },
+      "import_energy_tariff1": {
+        "address": 54,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Import Energy Tariff 1"
+      },
+      "export_energy_tariff1": {
+        "address": 56,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Export Energy Tariff 1"
+      },
+      "phase_sequence": {
+        "address": 60,
+        "type": "uint16",
+        "unit": "",
+        "description": "Phase Sequence Status"
+      },
+      "grid_status": {
+        "address": 61,
+        "type": "uint16",
+        "unit": "",
+        "description": "Grid Connection Status"
+      },
+      "protection_status": {
+        "address": 62,
+        "type": "uint16",
+        "unit": "",
+        "description": "Protection System Status"
+      },
+      "alarms": {
+        "address": 70,
+        "type": "uint32",
+        "unit": "",
+        "description": "Alarm Status Register"
+      },
+      "warnings": {
+        "address": 72,
+        "type": "uint32",
+        "unit": "",
+        "description": "Warning Status Register"
+      }
+    },
+    "holding_registers": {
+      "mgcb_control": {
+        "address": 1000,
+        "type": "uint16",
+        "unit": "",
+        "description": "Main Grid Circuit Breaker Control (0=Open, 1=Close)",
+        "writable": true
+      },
+      "export_enable": {
+        "address": 1001,
+        "type": "uint16",
+        "unit": "",
+        "description": "Export Enable Control (0=Disable, 1=Enable)",
+        "writable": true
+      },
+      "import_limit": {
+        "address": 1002,
+        "type": "uint16",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "Import Power Limit",
+        "writable": true
+      },
+      "export_limit": {
+        "address": 1003,
+        "type": "uint16",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "Export Power Limit",
+        "writable": true
+      },
+      "protection_settings": {
+        "address": 1010,
+        "type": "uint16",
+        "unit": "",
+        "description": "Protection Settings",
+        "writable": true
+      }
+    }
+  },
+  "polling_interval": 2000,
+  "timeout": 5000,
+  "retries": 3
+}
