@@ -1,0 +1,687 @@
+[
+    {
+        "id": "cl-tab",
+        "type": "tab",
+        "label": "Control Logic",
+        "disabled": false,
+        "info": "Flow for implementing control logic for PV inverters, gensets, and grid connection management.",
+        "env": []
+    },
+    {
+        "id": "control-timer",
+        "type": "inject",
+        "z": "cl-tab",
+        "name": "Control Loop Timer",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "10",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "5",
+        "topic": "control_cycle",
+        "payload": "",
+        "payloadType": "date",
+        "x": 140,
+        "y": 100,
+        "wires": [
+            ["system-state-analyzer"]
+        ]
+    },
+    {
+        "id": "system-state-analyzer",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "System State Analyzer",
+        "func": "// Analyze overall system state and determine control actions\n// This is the main control logic coordinator\n\n// Get latest data from all devices\nconst pvData = global.get('pv_data') || {};\nconst gensetData = global.get('genset_data') || {};\nconst gridData = global.get('power_meter_data') || {};\n\n// Get system configuration\nconst config = global.get('system_config') || {\n    max_pv_power: 10000, // W\n    max_genset_power: 15000, // W\n    min_spinning_reserve: 2000, // W\n    max_export_power: 5000, // W\n    zero_export_enabled: false,\n    load_sharing_enabled: true,\n    fuel_saving_enabled: true,\n    grid_connected: true\n};\n\n// Calculate system parameters\nconst pvPower = pvData.ac_power || 0;\nconst gensetPower = gensetData.ac_power || 0;\nconst gridPower = gridData.total_active_power || 0; // Positive = import, Negative = export\nconst totalGeneration = pvPower + gensetPower;\nconst loadPower = totalGeneration + gridPower; // Total load\n\n// Determine system state\nconst systemState = {\n    timestamp: new Date().toISOString(),\n    pv_power: pvPower,\n    genset_power: gensetPower,\n    grid_power: gridPower,\n    load_power: loadPower,\n    total_generation: totalGeneration,\n    grid_connected: gridData.grid_connected || false,\n    genset_running: gensetData.running || false,\n    pv_available: pvPower > 100,\n    excess_power: totalGeneration - loadPower,\n    deficit_power: loadPower - totalGeneration\n};\n\n// Store system state for other flows\nglobal.set('system_state', systemState);\n\n// Generate control decisions\nconst controlDecisions = {\n    timestamp: systemState.timestamp,\n    pv_curtailment: 0, // Amount to curtail PV (W)\n    genset_target_power: 0, // Target genset power (W)\n    genset_start_stop: 'maintain', // 'start', 'stop', 'maintain'\n    export_limit_active: false,\n    load_sharing_active: false,\n    spinning_reserve_required: config.min_spinning_reserve\n};\n\n// Control Logic Implementation\nif (config.grid_connected && systemState.grid_connected) {\n    // Grid-connected mode\n    if (config.zero_export_enabled) {\n        // Zero export control\n        if (systemState.excess_power > 100) {\n            // Too much generation, curtail PV or reduce genset\n            if (systemState.genset_running && gensetPower > 1000) {\n                // Reduce genset first for fuel saving\n                const reduction = Math.min(systemState.excess_power, gensetPower - 500);\n                controlDecisions.genset_target_power = gensetPower - reduction;\n            } else if (pvPower > 1000) {\n                // Curtail PV if needed\n                controlDecisions.pv_curtailment = Math.min(systemState.excess_power, pvPower * 0.1);\n            }\n        }\n    } else {\n        // Limited export mode\n        const exportPower = Math.abs(Math.min(0, gridPower));\n        if (exportPower > config.max_export_power) {\n            const excessExport = exportPower - config.max_export_power;\n            if (systemState.genset_running && gensetPower > 1000) {\n                const reduction = Math.min(excessExport, gensetPower - 500);\n                controlDecisions.genset_target_power = gensetPower - reduction;\n            } else {\n                controlDecisions.pv_curtailment = Math.min(excessExport, pvPower * 0.1);\n            }\n            controlDecisions.export_limit_active = true;\n        }\n    }\n    \n    // Genset control for grid-connected mode\n    if (config.fuel_saving_enabled && pvPower > 2000) {\n        // Sufficient solar, can reduce or stop genset\n        if (systemState.genset_running) {\n            const availableCapacity = pvPower + config.max_export_power;\n            if (availableCapacity > loadPower + config.min_spinning_reserve) {\n                if (gensetPower > 1000) {\n                    controlDecisions.genset_target_power = Math.max(500, gensetPower - 1000);\n                } else {\n                    controlDecisions.genset_start_stop = 'stop';\n                }\n            }\n        }\n    } else if (systemState.deficit_power > config.min_spinning_reserve) {\n        // Need more generation\n        if (!systemState.genset_running) {\n            controlDecisions.genset_start_stop = 'start';\n            controlDecisions.genset_target_power = Math.min(config.max_genset_power, \n                                                          systemState.deficit_power + config.min_spinning_reserve);\n        } else {\n            controlDecisions.genset_target_power = Math.min(config.max_genset_power, \n                                                          gensetPower + systemState.deficit_power);\n        }\n    }\n} else {\n    // Off-grid mode\n    const totalCapacity = pvPower + (systemState.genset_running ? config.max_genset_power : 0);\n    \n    if (loadPower > totalCapacity * 0.8) {\n        // High load, need genset\n        if (!systemState.genset_running) {\n            controlDecisions.genset_start_stop = 'start';\n            controlDecisions.genset_target_power = Math.min(config.max_genset_power, \n                                                          loadPower - pvPower + config.min_spinning_reserve);\n        } else {\n            // Adjust genset power for load sharing\n            const targetGensetPower = loadPower - pvPower + config.min_spinning_reserve;\n            controlDecisions.genset_target_power = Math.min(config.max_genset_power, \n                                                          Math.max(1000, targetGensetPower));\n            controlDecisions.load_sharing_active = true;\n        }\n    } else if (pvPower > loadPower + config.min_spinning_reserve && systemState.genset_running) {\n        // Excess solar, can reduce genset\n        const excessSolar = pvPower - loadPower;\n        if (excessSolar > config.min_spinning_reserve) {\n            if (gensetPower > 1000) {\n                controlDecisions.genset_target_power = Math.max(500, gensetPower - Math.min(1000, excessSolar));\n            } else {\n                controlDecisions.genset_start_stop = 'stop';\n            }\n        }\n    } else if (systemState.deficit_power > 500) {\n        // Need more generation\n        if (!systemState.genset_running) {\n            controlDecisions.genset_start_stop = 'start';\n            controlDecisions.genset_target_power = Math.min(config.max_genset_power, \n                                                          systemState.deficit_power + config.min_spinning_reserve);\n        }\n    }\n}\n\n// Store control decisions\nglobal.set('control_decisions', controlDecisions);\n\n// Output messages for different control actions\nconst messages = [];\n\n// PV Control Message\nif (controlDecisions.pv_curtailment > 0) {\n    messages.push({\n        topic: 'pv/control',\n        payload: {\n            action: 'curtail',\n            amount: controlDecisions.pv_curtailment,\n            percentage: (controlDecisions.pv_curtailment / pvPower) * 100\n        }\n    });\n}\n\n// Genset Control Message\nif (controlDecisions.genset_start_stop !== 'maintain' || controlDecisions.genset_target_power !== gensetPower) {\n    messages.push({\n        topic: 'genset/control',\n        payload: {\n            action: controlDecisions.genset_start_stop,\n            target_power: controlDecisions.genset_target_power,\n            current_power: gensetPower\n        }\n    });\n}\n\n// System Status Message\nmessages.push({\n    topic: 'system/status',\n    payload: {\n        state: systemState,\n        decisions: controlDecisions,\n        mode: config.grid_connected && systemState.grid_connected ? 'grid-connected' : 'off-grid'\n    }\n});\n\nnode.log(`Control Decision: PV=${pvPower}W, Genset=${gensetPower}W, Load=${loadPower}W, Grid=${gridPower}W`);\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 100,
+        "wires": [
+            ["control-router"]
+        ]
+    },
+    {
+        "id": "control-router",
+        "type": "switch",
+        "z": "cl-tab",
+        "name": "Control Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "pv/control",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "genset/control",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "system/status",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 600,
+        "y": 100,
+        "wires": [
+            ["pv-controller"],
+            ["genset-controller"],
+            ["status-logger"]
+        ]
+    },
+    {
+        "id": "pv-controller",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "PV Inverter Controller",
+        "func": "// Control PV inverter output for curtailment or optimization\nconst control = msg.payload;\n\nif (control.action === 'curtail') {\n    // Calculate new power limit as percentage\n    const currentPower = global.get('pv_data')?.ac_power || 0;\n    const newLimit = Math.max(0, currentPower - control.amount);\n    const limitPercentage = currentPower > 0 ? (newLimit / currentPower) * 100 : 100;\n    \n    // Modbus write command to set power limit\n    const modbusWrite = {\n        topic: 'pv_inverter_control',\n        payload: {\n            'fc': 6, // Function code 6 (Write Single Register)\n            'unitid': 1,\n            'address': 40100, // Power limit register (example)\n            'quantity': 1,\n            'values': [Math.round(limitPercentage * 10)] // Percentage * 10 for 0.1% resolution\n        }\n    };\n    \n    node.log(`PV Curtailment: ${control.amount}W (${control.percentage.toFixed(1)}%)`);\n    \n    // Log the control action\n    const logEntry = {\n        timestamp: new Date().toISOString(),\n        device: 'pv_inverter',\n        action: 'curtailment',\n        amount: control.amount,\n        percentage: control.percentage\n    };\n    \n    return [modbusWrite, {topic: 'control/log', payload: logEntry}];\n} else {\n    // Remove curtailment - set to 100%\n    const modbusWrite = {\n        topic: 'pv_inverter_control',\n        payload: {\n            'fc': 6,\n            'unitid': 1,\n            'address': 40100,\n            'quantity': 1,\n            'values': [1000] // 100.0%\n        }\n    };\n    \n    return [modbusWrite, null];\n}",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 60,
+        "wires": [
+            ["pv-modbus-write"],
+            ["control-logger"]
+        ]
+    },
+    {
+        "id": "genset-controller",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Genset Controller",
+        "func": "// Control genset start/stop and power output\nconst control = msg.payload;\nconst currentGensetData = global.get('genset_data') || {};\n\nconst messages = [];\n\nif (control.action === 'start' && !currentGensetData.running) {\n    // Start genset\n    const startCommand = {\n        topic: 'genset_control',\n        payload: {\n            'fc': 6, // Write Single Register\n            'unitid': 1,\n            'address': 40200, // Start/Stop register (example)\n            'quantity': 1,\n            'values': [1] // 1 = Start\n        }\n    };\n    \n    messages.push(startCommand);\n    \n    // Set initial power target after start delay\n    setTimeout(() => {\n        const powerCommand = {\n            topic: 'genset_control',\n            payload: {\n                'fc': 6,\n                'unitid': 1,\n                'address': 40201, // Power setpoint register\n                'quantity': 1,\n                'values': [Math.round(control.target_power / 10)] // Power in 10W increments\n            }\n        };\n        messages.push(powerCommand);\n    }, 30000); // 30 second delay for genset startup\n    \n    node.log(`Genset Start Command - Target Power: ${control.target_power}W`);\n    \n} else if (control.action === 'stop' && currentGensetData.running) {\n    // Stop genset\n    const stopCommand = {\n        topic: 'genset_control',\n        payload: {\n            'fc': 6,\n            'unitid': 1,\n            'address': 40200,\n            'quantity': 1,\n            'values': [0] // 0 = Stop\n        }\n    };\n    \n    messages.push(stopCommand);\n    node.log('Genset Stop Command');\n    \n} else if (control.action === 'maintain' && currentGensetData.running) {\n    // Adjust power output\n    const currentPower = currentGensetData.ac_power || 0;\n    const powerDifference = Math.abs(control.target_power - currentPower);\n    \n    // Only adjust if difference is significant (>5% or >500W)\n    if (powerDifference > Math.max(currentPower * 0.05, 500)) {\n        const powerCommand = {\n            topic: 'genset_control',\n            payload: {\n                'fc': 6,\n                'unitid': 1,\n                'address': 40201,\n                'quantity': 1,\n                'values': [Math.round(control.target_power / 10)]\n            }\n        };\n        \n        messages.push(powerCommand);\n        node.log(`Genset Power Adjustment: ${currentPower}W -> ${control.target_power}W`);\n    }\n}\n\n// Log the control action\nconst logEntry = {\n    timestamp: new Date().toISOString(),\n    device: 'genset',\n    action: control.action,\n    target_power: control.target_power,\n    current_power: control.current_power\n};\n\nmessages.push({topic: 'control/log', payload: logEntry});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 120,
+        "wires": [
+            ["genset-command-router"]
+        ]
+    },
+    {
+        "id": "genset-command-router",
+        "type": "switch",
+        "z": "cl-tab",
+        "name": "Genset Command Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "genset_control",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "control/log",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 1040,
+        "y": 120,
+        "wires": [
+            ["genset-modbus-write"],
+            ["control-logger"]
+        ]
+    },
+    {
+        "id": "status-logger",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "System Status Logger",
+        "func": "// Log system status and control decisions\nconst status = msg.payload;\n\n// Create comprehensive log entry\nconst logEntry = {\n    timestamp: status.state.timestamp,\n    mode: status.mode,\n    system_state: status.state,\n    control_decisions: status.decisions,\n    fuel_savings: {\n        pv_utilization: status.state.pv_power > 0 ? (status.state.pv_power / (status.state.pv_power + status.state.genset_power)) * 100 : 0,\n        genset_load_factor: status.state.genset_power > 0 ? (status.state.genset_power / 15000) * 100 : 0, // Assuming 15kW genset\n        estimated_fuel_rate: status.state.genset_power > 0 ? (status.state.genset_power * 0.3 / 1000) : 0 // L/hr estimation\n    },\n    efficiency: {\n        system_efficiency: status.state.total_generation > 0 ? (status.state.load_power / status.state.total_generation) * 100 : 0,\n        grid_interaction: status.state.grid_power\n    }\n};\n\n// Store for reporting\nconst historicalData = context.get('system_history') || [];\nhistoricalData.push(logEntry);\n\n// Keep only last 1000 entries in memory\nif (historicalData.length > 1000) {\n    historicalData.shift();\n}\ncontext.set('system_history', historicalData);\n\n// Calculate daily statistics\nconst today = new Date().toDateString();\nconst todayData = historicalData.filter(entry => new Date(entry.timestamp).toDateString() === today);\n\nif (todayData.length > 0) {\n    const dailyStats = {\n        date: today,\n        avg_pv_power: todayData.reduce((sum, entry) => sum + entry.system_state.pv_power, 0) / todayData.length,\n        avg_genset_power: todayData.reduce((sum, entry) => sum + entry.system_state.genset_power, 0) / todayData.length,\n        avg_load_power: todayData.reduce((sum, entry) => sum + entry.system_state.load_power, 0) / todayData.length,\n        total_pv_energy: todayData.reduce((sum, entry) => sum + (entry.system_state.pv_power * 10 / 3600), 0) / 1000, // kWh\n        total_genset_energy: todayData.reduce((sum, entry) => sum + (entry.system_state.genset_power * 10 / 3600), 0) / 1000, // kWh\n        estimated_fuel_consumed: todayData.reduce((sum, entry) => sum + (entry.fuel_savings.estimated_fuel_rate * 10 / 3600), 0), // Liters\n        pv_contribution: 0\n    };\n    \n    dailyStats.pv_contribution = dailyStats.total_pv_energy / (dailyStats.total_pv_energy + dailyStats.total_genset_energy) * 100;\n    \n    context.set('daily_stats', dailyStats);\n}\n\n// Send to dashboard and database\nreturn [{\n    topic: 'system/log',\n    payload: logEntry\n}, {\n    topic: 'dashboard/system',\n    payload: {\n        state: status.state,\n        decisions: status.decisions,\n        mode: status.mode\n    }\n}];",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 180,
+        "wires": [
+            ["control-logger"],
+            ["dashboard-update"]
+        ]
+    },
+    {
+        "id": "pv-modbus-write",
+        "type": "modbus-write",
+        "z": "cl-tab",
+        "name": "PV Inverter Write",
+        "showStatusActivities": false,
+        "showErrors": false,
+        "unitid": "",
+        "dataType": "HoldingRegister",
+        "adr": "",
+        "quantity": "",
+        "server": "modbus-client-config",
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": false,
+        "x": 1040,
+        "y": 60,
+        "wires": [
+            ["write-confirmation"],
+            ["write-error-handler"]
+        ]
+    },
+    {
+        "id": "genset-modbus-write",
+        "type": "modbus-write",
+        "z": "cl-tab",
+        "name": "Genset Write",
+        "showStatusActivities": false,
+        "showErrors": false,
+        "unitid": "",
+        "dataType": "HoldingRegister",
+        "adr": "",
+        "quantity": "",
+        "server": "genset-client-config",
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": false,
+        "x": 1240,
+        "y": 120,
+        "wires": [
+            ["write-confirmation"],
+            ["write-error-handler"]
+        ]
+    },
+    {
+        "id": "write-confirmation",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Write Confirmation",
+        "func": "// Log successful control commands\nconst timestamp = new Date().toISOString();\nnode.log(`Control command executed successfully at ${timestamp}`);\n\nmsg.payload = {\n    timestamp: timestamp,\n    status: 'success',\n    command: msg.topic,\n    response: msg.payload\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1260,
+        "y": 60,
+        "wires": [
+            ["control-logger"]
+        ]
+    },
+    {
+        "id": "write-error-handler",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Write Error Handler",
+        "func": "// Handle control command errors\nconst timestamp = new Date().toISOString();\nnode.error(`Control command failed at ${timestamp}: ${msg.payload}`);\n\n// Create alert for control failure\nconst alert = {\n    type: 'warning',\n    device: 'control_system',\n    message: `Control command failed: ${msg.topic}`,\n    timestamp: timestamp,\n    error_details: msg.payload\n};\n\nmsg.payload = alert;\nmsg.topic = 'alert/warning';\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1280,
+        "y": 160,
+        "wires": [
+            ["alert-sender"]
+        ]
+    },
+    {
+        "id": "control-logger",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Control Action Logger",
+        "func": "// Log all control actions to database and file\nconst logData = msg.payload;\n\n// Format for database storage\nconst dbEntry = {\n    timestamp: logData.timestamp || new Date().toISOString(),\n    action_type: 'control',\n    device: logData.device || 'system',\n    action: logData.action || 'unknown',\n    parameters: JSON.stringify(logData)\n};\n\n// Format for file logging\nconst csvLine = `${dbEntry.timestamp},${dbEntry.device},${dbEntry.action},${dbEntry.parameters}\\n`;\n\nreturn [{\n    topic: 'db/control_log',\n    payload: dbEntry\n}, {\n    topic: 'file/control_log',\n    payload: csvLine\n}];",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1040,
+        "y": 220,
+        "wires": [
+            ["db-control-writer"],
+            ["file-control-writer"]
+        ]
+    },
+    {
+        "id": "manual-control",
+        "type": "ui_form",
+        "z": "cl-tab",
+        "name": "Manual Control Panel",
+        "label": "Manual System Control",
+        "group": "control-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "options": [
+            {
+                "label": "PV Power Limit (%)",
+                "value": "pv_limit",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Genset Command",
+                "value": "genset_command",
+                "type": "dropdown",
+                "required": true,
+                "rows": null,
+                "options": [
+                    {
+                        "label": "Start",
+                        "value": "start"
+                    },
+                    {
+                        "label": "Stop",
+                        "value": "stop"
+                    },
+                    {
+                        "label": "Maintain",
+                        "value": "maintain"
+                    }
+                ]
+            },
+            {
+                "label": "Genset Target Power (W)",
+                "value": "genset_power",
+                "type": "number",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Override Auto Control",
+                "value": "manual_override",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "pv_limit": 100,
+            "genset_command": "maintain",
+            "genset_power": 0,
+            "manual_override": false
+        },
+        "payload": "",
+        "submit": "Execute Control",
+        "cancel": "Cancel",
+        "topic": "manual_control",
+        "topicType": "str",
+        "splitLayout": false,
+        "className": "",
+        "x": 160,
+        "y": 300,
+        "wires": [
+            ["manual-control-processor"]
+        ]
+    },
+    {
+        "id": "manual-control-processor",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Manual Control Processor",
+        "func": "// Process manual control commands from dashboard\nconst controls = msg.payload;\n\n// Set manual override flag\nif (controls.manual_override) {\n    global.set('manual_override', true);\n    node.log('Manual override activated');\n} else {\n    global.set('manual_override', false);\n    node.log('Manual override deactivated');\n}\n\nconst messages = [];\n\n// PV Control\nif (controls.pv_limit !== undefined && controls.pv_limit !== 100) {\n    const pvData = global.get('pv_data') || {};\n    const currentPower = pvData.ac_power || 0;\n    const targetPower = currentPower * (controls.pv_limit / 100);\n    const curtailment = currentPower - targetPower;\n    \n    messages.push({\n        topic: 'pv/control',\n        payload: {\n            action: 'curtail',\n            amount: curtailment,\n            percentage: 100 - controls.pv_limit\n        }\n    });\n}\n\n// Genset Control\nif (controls.genset_command && controls.genset_command !== 'maintain') {\n    messages.push({\n        topic: 'genset/control',\n        payload: {\n            action: controls.genset_command,\n            target_power: controls.genset_power || 0,\n            current_power: global.get('genset_data')?.ac_power || 0\n        }\n    });\n} else if (controls.genset_power && controls.genset_power > 0) {\n    messages.push({\n        topic: 'genset/control',\n        payload: {\n            action: 'maintain',\n            target_power: controls.genset_power,\n            current_power: global.get('genset_data')?.ac_power || 0\n        }\n    });\n}\n\n// Log manual control action\nconst logEntry = {\n    timestamp: new Date().toISOString(),\n    device: 'manual_control',\n    action: 'manual_command',\n    parameters: controls\n};\n\nmessages.push({\n    topic: 'control/log',\n    payload: logEntry\n});\n\nnode.log(`Manual control executed: ${JSON.stringify(controls)}`);\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 300,
+        "wires": [
+            ["control-router"]
+        ]
+    },
+    {
+        "id": "configuration-manager",
+        "type": "ui_form",
+        "z": "cl-tab",
+        "name": "System Configuration",
+        "label": "System Configuration",
+        "group": "config-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "options": [
+            {
+                "label": "Max PV Power (W)",
+                "value": "max_pv_power",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Max Genset Power (W)",
+                "value": "max_genset_power",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Min Spinning Reserve (W)",
+                "value": "min_spinning_reserve",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Max Export Power (W)",
+                "value": "max_export_power",
+                "type": "number",
+                "required": true,
+                "rows": null
+            },
+            {
+                "label": "Zero Export Enabled",
+                "value": "zero_export_enabled",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Load Sharing Enabled",
+                "value": "load_sharing_enabled",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Fuel Saving Enabled",
+                "value": "fuel_saving_enabled",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            },
+            {
+                "label": "Grid Connected",
+                "value": "grid_connected",
+                "type": "checkbox",
+                "required": false,
+                "rows": null
+            }
+        ],
+        "formValue": {
+            "max_pv_power": 10000,
+            "max_genset_power": 15000,
+            "min_spinning_reserve": 2000,
+            "max_export_power": 5000,
+            "zero_export_enabled": false,
+            "load_sharing_enabled": true,
+            "fuel_saving_enabled": true,
+            "grid_connected": true
+        },
+        "payload": "",
+        "submit": "Update Configuration",
+        "cancel": "Cancel",
+        "topic": "system_config",
+        "topicType": "str",
+        "splitLayout": false,
+        "className": "",
+        "x": 160,
+        "y": 400,
+        "wires": [
+            ["config-updater"]
+        ]
+    },
+    {
+        "id": "config-updater",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Configuration Updater",
+        "func": "// Update system configuration\nconst newConfig = msg.payload;\n\n// Store new configuration\nglobal.set('system_config', newConfig);\n\n// Log configuration change\nconst logEntry = {\n    timestamp: new Date().toISOString(),\n    device: 'system',\n    action: 'config_update',\n    parameters: newConfig\n};\n\nnode.log(`System configuration updated: ${JSON.stringify(newConfig)}`);\n\n// Send confirmation\nmsg.payload = {\n    status: 'success',\n    message: 'Configuration updated successfully',\n    timestamp: new Date().toISOString(),\n    config: newConfig\n};\n\nreturn [msg, {topic: 'control/log', payload: logEntry}];",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 400,
+        "wires": [
+            ["config-confirmation"],
+            ["control-logger"]
+        ]
+    },
+    {
+        "id": "emergency-stop",
+        "type": "ui_button",
+        "z": "cl-tab",
+        "name": "Emergency Stop",
+        "group": "control-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "EMERGENCY STOP",
+        "tooltip": "Emergency stop all generation",
+        "color": "white",
+        "bgcolor": "red",
+        "className": "",
+        "icon": "",
+        "payload": "emergency_stop",
+        "payloadType": "str",
+        "topic": "emergency",
+        "topicType": "str",
+        "x": 160,
+        "y": 500,
+        "wires": [
+            ["emergency-processor"]
+        ]
+    },
+    {
+        "id": "emergency-processor",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Emergency Stop Processor",
+        "func": "// Process emergency stop command\nnode.warn('EMERGENCY STOP ACTIVATED!');\n\n// Set emergency flag\nglobal.set('emergency_stop', true);\nglobal.set('manual_override', true);\n\nconst messages = [];\n\n// Stop genset immediately\nmessages.push({\n    topic: 'genset/control',\n    payload: {\n        action: 'stop',\n        target_power: 0,\n        current_power: global.get('genset_data')?.ac_power || 0\n    }\n});\n\n// Curtail PV to minimum\nmessages.push({\n    topic: 'pv/control',\n    payload: {\n        action: 'curtail',\n        amount: global.get('pv_data')?.ac_power || 0,\n        percentage: 100\n    }\n});\n\n// Create critical alert\nmessages.push({\n    topic: 'alert/critical',\n    payload: {\n        type: 'critical',\n        device: 'system',\n        message: 'EMERGENCY STOP ACTIVATED - All generation stopped',\n        timestamp: new Date().toISOString()\n    }\n});\n\n// Log emergency action\nmessages.push({\n    topic: 'control/log',\n    payload: {\n        timestamp: new Date().toISOString(),\n        device: 'system',\n        action: 'emergency_stop',\n        parameters: {emergency: true}\n    }\n});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 500,
+        "wires": [
+            ["emergency-router"]
+        ]
+    },
+    {
+        "id": "emergency-router",
+        "type": "switch",
+        "z": "cl-tab",
+        "name": "Emergency Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "cont",
+                "v": "control",
+                "vt": "str"
+            },
+            {
+                "t": "cont",
+                "v": "alert",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 2,
+        "x": 620,
+        "y": 500,
+        "wires": [
+            ["control-router"],
+            ["alert-sender"]
+        ]
+    },
+    {
+        "id": "reset-emergency",
+        "type": "ui_button",
+        "z": "cl-tab",
+        "name": "Reset Emergency",
+        "group": "control-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "Reset Emergency Stop",
+        "tooltip": "Reset emergency stop condition",
+        "color": "white",
+        "bgcolor": "green",
+        "className": "",
+        "icon": "",
+        "payload": "reset_emergency",
+        "payloadType": "str",
+        "topic": "reset",
+        "topicType": "str",
+        "x": 160,
+        "y": 560,
+        "wires": [
+            ["reset-processor"]
+        ]
+    },
+    {
+        "id": "reset-processor",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Reset Emergency Processor",
+        "func": "// Reset emergency stop condition\nnode.log('Emergency stop reset');\n\n// Clear emergency flags\nglobal.set('emergency_stop', false);\nglobal.set('manual_override', false);\n\n// Log reset action\nconst logEntry = {\n    timestamp: new Date().toISOString(),\n    device: 'system',\n    action: 'emergency_reset',\n    parameters: {emergency: false}\n};\n\n// Send info alert\nconst alert = {\n    type: 'info',\n    device: 'system',\n    message: 'Emergency stop condition reset - System ready for normal operation',\n    timestamp: new Date().toISOString()\n};\n\nreturn [{\n    topic: 'control/log',\n    payload: logEntry\n}, {\n    topic: 'alert/info',\n    payload: alert\n}];",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 560,
+        "wires": [
+            ["control-logger"],
+            ["alert-sender"]
+        ]
+    },
+    {
+        "id": "db-control-writer",
+        "type": "sqlite",
+        "z": "cl-tab",
+        "mydb": "sqlite-config",
+        "sqlquery": "prepared",
+        "sql": "INSERT INTO control_log (timestamp, action_type, device, action, parameters) VALUES (?, ?, ?, ?, ?)",
+        "name": "Control DB Writer",
+        "x": 1260,
+        "y": 200,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "file-control-writer",
+        "type": "file",
+        "z": "cl-tab",
+        "name": "Control File Writer",
+        "filename": "./data/control_log.csv",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1270,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "dashboard-update",
+        "type": "function",
+        "z": "cl-tab",
+        "name": "Dashboard Update",
+        "func": "// Send system status to dashboard\nconst data = msg.payload;\n\n// Format data for dashboard widgets\nconst messages = [];\n\n// System overview\nmessages.push({\n    topic: 'system/overview',\n    payload: {\n        mode: data.mode,\n        pv_power: data.state.pv_power,\n        genset_power: data.state.genset_power,\n        load_power: data.state.load_power,\n        grid_power: data.state.grid_power\n    }\n});\n\n// Control status\nmessages.push({\n    topic: 'control/status',\n    payload: {\n        pv_curtailment: data.decisions.pv_curtailment,\n        genset_target: data.decisions.genset_target_power,\n        export_limit: data.decisions.export_limit_active,\n        load_sharing: data.decisions.load_sharing_active\n    }\n});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1040,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "config-confirmation",
+        "type": "ui_toast",
+        "z": "cl-tab",
+        "position": "top right",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": true,
+        "outputs": 0,
+        "ok": "OK",
+        "cancel": "",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "Config Toast",
+        "x": 620,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "alert-sender",
+        "type": "link out",
+        "z": "cl-tab",
+        "name": "To Alert System",
+        "links": [],
+        "x": 820,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "control-group",
+        "type": "ui_group",
+        "name": "Manual Control",
+        "tab": "control-tab",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "config-group",
+        "type": "ui_group",
+        "name": "System Configuration",
+        "tab": "control-tab",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "control-tab",
+        "type": "ui_tab",
+        "name": "Control",
+        "icon": "dashboard",
+        "order": 2,
+        "disabled": false,
+        "hidden": false
+    }
+]

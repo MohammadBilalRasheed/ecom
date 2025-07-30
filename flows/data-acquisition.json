@@ -1,0 +1,512 @@
+[
+    {
+        "id": "da-tab",
+        "type": "tab",
+        "label": "Data Acquisition",
+        "disabled": false,
+        "info": "Flow for reading data from PV inverters, gensets, and power meters via Modbus and other protocols.",
+        "env": []
+    },
+    {
+        "id": "modbus-client-config",
+        "type": "modbus-client",
+        "name": "PV Inverter Client",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "tcpHost": "192.168.1.100",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "unit_id": "1",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": "2000",
+        "parallelUnitIdsAllowed": true
+    },
+    {
+        "id": "genset-client-config",
+        "type": "modbus-client",
+        "name": "Genset Controller Client",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "tcpHost": "192.168.1.101",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "unit_id": "1",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": "2000",
+        "parallelUnitIdsAllowed": true
+    },
+    {
+        "id": "power-meter-config",
+        "type": "modbus-client",
+        "name": "Power Meter Client",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "tcpHost": "192.168.1.102",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "unit_id": "1",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": "2000",
+        "parallelUnitIdsAllowed": true
+    },
+    {
+        "id": "pv-data-reader",
+        "type": "modbus-read",
+        "z": "da-tab",
+        "name": "Read PV Inverter Data",
+        "topic": "pv_inverter",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "unitid": "1",
+        "dataType": "HoldingRegister",
+        "adr": "40001",
+        "quantity": "20",
+        "rate": "5000",
+        "rateUnit": "ms",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "modbus-client-config",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 160,
+        "y": 80,
+        "wires": [
+            ["pv-data-parser"]
+        ]
+    },
+    {
+        "id": "pv-data-parser",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Parse PV Data",
+        "func": "// Parse PV inverter Modbus data\n// Typical registers for solar inverters:\n// 40001-40002: AC Power (W)\n// 40003-40004: AC Voltage L1 (V)\n// 40005-40006: AC Current L1 (A)\n// 40007-40008: AC Frequency (Hz)\n// 40009-40010: DC Power (W)\n// 40011-40012: DC Voltage (V)\n// 40013-40014: DC Current (A)\n// 40015: Inverter Status\n// 40016: Temperature (°C)\n// 40017-40018: Daily Energy (kWh)\n// 40019-40020: Total Energy (kWh)\n\nconst buffer = msg.payload.buffer;\nconst data = msg.payload.data;\n\nif (buffer && buffer.length >= 40) {\n    const parsed = {\n        timestamp: new Date().toISOString(),\n        device: 'pv_inverter',\n        ac_power: buffer.readUInt32BE(0) / 10, // W\n        ac_voltage_l1: buffer.readUInt32BE(4) / 10, // V\n        ac_current_l1: buffer.readUInt32BE(8) / 100, // A\n        ac_frequency: buffer.readUInt32BE(12) / 100, // Hz\n        dc_power: buffer.readUInt32BE(16) / 10, // W\n        dc_voltage: buffer.readUInt32BE(20) / 10, // V\n        dc_current: buffer.readUInt32BE(24) / 100, // A\n        status: buffer.readUInt16BE(28), // Status code\n        temperature: buffer.readInt16BE(30) / 10, // °C\n        daily_energy: buffer.readUInt32BE(32) / 100, // kWh\n        total_energy: buffer.readUInt32BE(36) / 100, // kWh\n        efficiency: 0 // Will be calculated\n    };\n    \n    // Calculate efficiency\n    if (parsed.dc_power > 0) {\n        parsed.efficiency = (parsed.ac_power / parsed.dc_power) * 100;\n    }\n    \n    // Store in global context for use by other flows\n    global.set('pv_data', parsed);\n    \n    msg.payload = parsed;\n    msg.topic = 'pv/data';\n    \n    return msg;\n} else {\n    node.error('Invalid data length from PV inverter');\n    return null;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 80,
+        "wires": [
+            ["data-logger", "pv-status-check"]
+        ]
+    },
+    {
+        "id": "genset-data-reader",
+        "type": "modbus-read",
+        "z": "da-tab",
+        "name": "Read Genset Data",
+        "topic": "genset",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "unitid": "1",
+        "dataType": "HoldingRegister",
+        "adr": "40001",
+        "quantity": "15",
+        "rate": "3000",
+        "rateUnit": "ms",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "genset-client-config",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 160,
+        "y": 180,
+        "wires": [
+            ["genset-data-parser"]
+        ]
+    },
+    {
+        "id": "genset-data-parser",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Parse Genset Data",
+        "func": "// Parse genset controller Modbus data\n// Typical registers for genset controllers:\n// 40001-40002: AC Power (W)\n// 40003: AC Voltage L1 (V)\n// 40004: AC Voltage L2 (V)\n// 40005: AC Voltage L3 (V)\n// 40006: AC Current L1 (A)\n// 40007: AC Current L2 (A)\n// 40008: AC Current L3 (A)\n// 40009: Frequency (Hz)\n// 40010: Engine RPM\n// 40011: Engine Temperature (°C)\n// 40012: Oil Pressure (bar)\n// 40013: Fuel Level (%)\n// 40014: Run Hours\n// 40015: Status/Alarms\n\nconst buffer = msg.payload.buffer;\nconst data = msg.payload.data;\n\nif (buffer && buffer.length >= 30) {\n    const parsed = {\n        timestamp: new Date().toISOString(),\n        device: 'genset',\n        ac_power: buffer.readUInt32BE(0) / 10, // W\n        ac_voltage_l1: buffer.readUInt16BE(4) / 10, // V\n        ac_voltage_l2: buffer.readUInt16BE(6) / 10, // V\n        ac_voltage_l3: buffer.readUInt16BE(8) / 10, // V\n        ac_current_l1: buffer.readUInt16BE(10) / 100, // A\n        ac_current_l2: buffer.readUInt16BE(12) / 100, // A\n        ac_current_l3: buffer.readUInt16BE(14) / 100, // A\n        frequency: buffer.readUInt16BE(16) / 100, // Hz\n        engine_rpm: buffer.readUInt16BE(18), // RPM\n        engine_temp: buffer.readInt16BE(20) / 10, // °C\n        oil_pressure: buffer.readUInt16BE(22) / 100, // bar\n        fuel_level: buffer.readUInt16BE(24) / 10, // %\n        run_hours: buffer.readUInt16BE(26), // hours\n        status: buffer.readUInt16BE(28), // Status/Alarms\n        running: false\n    };\n    \n    // Determine if genset is running\n    parsed.running = parsed.engine_rpm > 500 && parsed.ac_power > 100;\n    \n    // Store in global context for use by other flows\n    global.set('genset_data', parsed);\n    \n    msg.payload = parsed;\n    msg.topic = 'genset/data';\n    \n    return msg;\n} else {\n    node.error('Invalid data length from genset controller');\n    return null;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 180,
+        "wires": [
+            ["data-logger", "genset-status-check"]
+        ]
+    },
+    {
+        "id": "power-meter-reader",
+        "type": "modbus-read",
+        "z": "da-tab",
+        "name": "Read Power Meter",
+        "topic": "power_meter",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "unitid": "1",
+        "dataType": "HoldingRegister",
+        "adr": "40001",
+        "quantity": "25",
+        "rate": "2000",
+        "rateUnit": "ms",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "power-meter-config",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,\n        \"x\": 160,\n        \"y\": 280,\n        \"wires\": [\n            [\"power-meter-parser\"]\n        ]\n    },\n    {\n        \"id\": \"power-meter-parser\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Parse Power Meter Data\",\n        \"func\": \"// Parse power meter Modbus data\\n// Typical registers for power meters:\\n// 40001-40002: Total Active Power (W)\\n// 40003-40004: L1 Active Power (W)\\n// 40005-40006: L2 Active Power (W)\\n// 40007-40008: L3 Active Power (W)\\n// 40009-40010: Total Reactive Power (VAR)\\n// 40011-40012: Total Apparent Power (VA)\\n// 40013: L1 Voltage (V)\\n// 40014: L2 Voltage (V)\\n// 40015: L3 Voltage (V)\\n// 40016: L1 Current (A)\\n// 40017: L2 Current (A)\\n// 40018: L3 Current (A)\\n// 40019: Frequency (Hz)\\n// 40020: Power Factor\\n// 40021-40022: Total Energy Import (kWh)\\n// 40023-40024: Total Energy Export (kWh)\\n// 40025: Direction (Import/Export)\\n\\nconst buffer = msg.payload.buffer;\\nconst data = msg.payload.data;\\n\\nif (buffer && buffer.length >= 50) {\\n    const parsed = {\\n        timestamp: new Date().toISOString(),\\n        device: 'power_meter',\\n        total_active_power: buffer.readInt32BE(0) / 10, // W (signed for import/export)\\n        l1_active_power: buffer.readInt32BE(4) / 10, // W\\n        l2_active_power: buffer.readInt32BE(8) / 10, // W\\n        l3_active_power: buffer.readInt32BE(12) / 10, // W\\n        total_reactive_power: buffer.readInt32BE(16) / 10, // VAR\\n        total_apparent_power: buffer.readUInt32BE(20) / 10, // VA\\n        l1_voltage: buffer.readUInt16BE(24) / 10, // V\\n        l2_voltage: buffer.readUInt16BE(26) / 10, // V\\n        l3_voltage: buffer.readUInt16BE(28) / 10, // V\\n        l1_current: buffer.readUInt16BE(30) / 100, // A\\n        l2_current: buffer.readUInt16BE(32) / 100, // A\\n        l3_current: buffer.readUInt16BE(34) / 100, // A\\n        frequency: buffer.readUInt16BE(36) / 100, // Hz\\n        power_factor: buffer.readInt16BE(38) / 1000, // PF\\n        total_energy_import: buffer.readUInt32BE(40) / 100, // kWh\\n        total_energy_export: buffer.readUInt32BE(44) / 100, // kWh\\n        direction: buffer.readUInt16BE(48) // 0=Import, 1=Export\\n    };\\n    \\n    // Determine grid status\\n    parsed.grid_connected = Math.abs(parsed.total_active_power) > 50; // Threshold for grid connection\\n    parsed.exporting = parsed.total_active_power < -100; // Negative power indicates export\\n    parsed.importing = parsed.total_active_power > 100; // Positive power indicates import\\n    \\n    // Store in global context for use by other flows\\n    global.set('power_meter_data', parsed);\\n    \\n    msg.payload = parsed;\\n    msg.topic = 'grid/data';\\n    \\n    return msg;\\n} else {\\n    node.error('Invalid data length from power meter');\\n    return null;\\n}\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 380,\n        \"y\": 280,\n        \"wires\": [\n            [\"data-logger\", \"grid-status-check\"]\n        ]\n    },\n    {\n        \"id\": \"data-logger\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Data Logger\",\n        \"func\": \"// Log all device data to database and files\\n// This function receives data from all devices and formats it for storage\\n\\nconst timestamp = new Date().toISOString();\\nconst deviceData = msg.payload;\\n\\n// Create standardized log entry\\nconst logEntry = {\\n    timestamp: timestamp,\\n    device_type: deviceData.device,\\n    data: deviceData\\n};\\n\\n// Send to database\\nmsg.database = {\\n    topic: 'INSERT',\\n    payload: logEntry\\n};\\n\\n// Send to file logger\\nmsg.file = {\\n    topic: 'log',\\n    payload: `${timestamp},${deviceData.device},${JSON.stringify(deviceData)}\\\\n`\\n};\\n\\n// Send to dashboard for real-time display\\nmsg.dashboard = deviceData;\\n\\n// Store in context for other flows\\ncontext.set(`last_${deviceData.device}_data`, deviceData);\\n\\nreturn [msg, msg.database, msg.file, msg.dashboard];\",\n        \"outputs\": 4,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 580,\n        \"y\": 180,\n        \"wires\": [\n            [],\n            [\"db-writer\"],\n            [\"file-writer\"],\n            [\"dashboard-sender\"]\n        ]\n    },\n    {\n        \"id\": \"pv-status-check\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"PV Status Check\",\n        \"func\": \"// Check PV inverter status and generate alerts if needed\\nconst data = msg.payload;\\nconst alerts = [];\\n\\n// Check for PV inverter faults\\nif (data.status !== 3) { // Assuming 3 = normal operation\\n    alerts.push({\\n        type: 'warning',\\n        device: 'pv_inverter',\\n        message: `PV Inverter status abnormal: ${data.status}`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check for temperature issues\\nif (data.temperature > 70) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'pv_inverter',\\n        message: `PV Inverter temperature high: ${data.temperature}°C`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check for low efficiency\\nif (data.efficiency < 80 && data.dc_power > 1000) {\\n    alerts.push({\\n        type: 'info',\\n        device: 'pv_inverter',\\n        message: `PV Inverter efficiency low: ${data.efficiency.toFixed(1)}%`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (alerts.length > 0) {\\n    msg.payload = alerts;\\n    return msg;\\n}\\n\\nreturn null;\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 580,\n        \"y\": 80,\n        \"wires\": [\n            [\"alert-handler\"]\n        ]\n    },\n    {\n        \"id\": \"genset-status-check\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Genset Status Check\",\n        \"func\": \"// Check genset status and generate alerts if needed\\nconst data = msg.payload;\\nconst alerts = [];\\n\\n// Check for genset alarms (assuming bit-mapped status)\\nif (data.status & 0x01) {\\n    alerts.push({\\n        type: 'critical',\\n        device: 'genset',\\n        message: 'Genset emergency stop active',\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (data.status & 0x02) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'genset',\\n        message: 'Genset low oil pressure',\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (data.status & 0x04) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'genset',\\n        message: 'Genset high temperature',\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check operational parameters\\nif (data.running && data.engine_temp > 95) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'genset',\\n        message: `Genset engine temperature high: ${data.engine_temp}°C`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (data.running && data.oil_pressure < 2.0) {\\n    alerts.push({\\n        type: 'critical',\\n        device: 'genset',\\n        message: `Genset oil pressure low: ${data.oil_pressure} bar`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (data.fuel_level < 20) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'genset',\\n        message: `Genset fuel level low: ${data.fuel_level}%`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (alerts.length > 0) {\\n    msg.payload = alerts;\\n    return msg;\\n}\\n\\nreturn null;\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 580,\n        \"y\": 180,\n        \"wires\": [\n            [\"alert-handler\"]\n        ]\n    },\n    {\n        \"id\": \"grid-status-check\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Grid Status Check\",\n        \"func\": \"// Check grid/power meter status and generate alerts if needed\\nconst data = msg.payload;\\nconst alerts = [];\\n\\n// Check for voltage issues\\nconst voltages = [data.l1_voltage, data.l2_voltage, data.l3_voltage];\\nconst avgVoltage = voltages.reduce((a, b) => a + b, 0) / 3;\\n\\nif (avgVoltage < 200 || avgVoltage > 250) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'power_meter',\\n        message: `Grid voltage abnormal: ${avgVoltage.toFixed(1)}V`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check for frequency issues\\nif (data.frequency < 49.5 || data.frequency > 50.5) {\\n    alerts.push({\\n        type: 'warning',\\n        device: 'power_meter',\\n        message: `Grid frequency abnormal: ${data.frequency}Hz`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check for excessive export\\nif (data.exporting && Math.abs(data.total_active_power) > 10000) {\\n    alerts.push({\\n        type: 'info',\\n        device: 'power_meter',\\n        message: `High export power: ${Math.abs(data.total_active_power)}W`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\n// Check for power factor issues\\nif (Math.abs(data.power_factor) < 0.8) {\\n    alerts.push({\\n        type: 'info',\\n        device: 'power_meter',\\n        message: `Poor power factor: ${data.power_factor}`,\\n        timestamp: data.timestamp\\n    });\\n}\\n\\nif (alerts.length > 0) {\\n    msg.payload = alerts;\\n    return msg;\\n}\\n\\nreturn null;\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 580,\n        \"y\": 280,\n        \"wires\": [\n            [\"alert-handler\"]\n        ]\n    },\n    {\n        \"id\": \"alert-handler\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Alert Handler\",\n        \"func\": \"// Process and route alerts\\nconst alerts = msg.payload;\\n\\nif (!Array.isArray(alerts)) {\\n    return null;\\n}\\n\\nconst messages = [];\\n\\nalerts.forEach(alert => {\\n    // Log alert\\n    node.log(`ALERT [${alert.type.toUpperCase()}] ${alert.device}: ${alert.message}`);\\n    \\n    // Store in context for dashboard\\n    const currentAlerts = context.get('active_alerts') || [];\\n    currentAlerts.push(alert);\\n    context.set('active_alerts', currentAlerts);\\n    \\n    // Create message for notification system\\n    const alertMsg = {\\n        topic: `alert/${alert.type}`,\\n        payload: alert\\n    };\\n    \\n    messages.push(alertMsg);\\n});\\n\\nreturn [messages];\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 780,\n        \"y\": 180,\n        \"wires\": [\n            [\"notification-router\"]\n        ]\n    },\n    {\n        \"id\": \"notification-router\",\n        \"type\": \"switch\",\n        \"z\": \"da-tab\",\n        \"name\": \"Notification Router\",\n        \"property\": \"payload.type\",\n        \"propertyType\": \"msg\",\n        \"rules\": [\n            {\n                \"t\": \"eq\",\n                \"v\": \"critical\",\n                \"vt\": \"str\"\n            },\n            {\n                \"t\": \"eq\",\n                \"v\": \"warning\",\n                \"vt\": \"str\"\n            },\n            {\n                \"t\": \"eq\",\n                \"v\": \"info\",\n                \"vt\": \"str\"\n            }\n        ],\n        \"checkall\": \"false\",\n        \"repair\": false,\n        \"outputs\": 3,\n        \"x\": 980,\n        \"y\": 180,\n        \"wires\": [\n            [\"critical-notification\"],\n            [\"warning-notification\"],\n            [\"info-notification\"]\n        ]\n    },\n    {\n        \"id\": \"critical-notification\",\n        \"type\": \"template\",\n        \"z\": \"da-tab\",\n        \"name\": \"Critical Alert\",\n        \"field\": \"payload\",\n        \"fieldType\": \"msg\",\n        \"format\": \"handlebars\",\n        \"syntax\": \"mustache\",\n        \"template\": \"🚨 CRITICAL ALERT 🚨\\n\\nDevice: {{payload.device}}\\nMessage: {{payload.message}}\\nTime: {{payload.timestamp}}\\n\\nImmediate action required!\",\n        \"output\": \"str\",\n        \"x\": 1180,\n        \"y\": 140,\n        \"wires\": [\n            [\"email-sender\", \"sms-sender\"]\n        ]\n    },\n    {\n        \"id\": \"warning-notification\",\n        \"type\": \"template\",\n        \"z\": \"da-tab\",\n        \"name\": \"Warning Alert\",\n        \"field\": \"payload\",\n        \"fieldType\": \"msg\",\n        \"format\": \"handlebars\",\n        \"syntax\": \"mustache\",\n        \"template\": \"⚠️ WARNING ALERT ⚠️\\n\\nDevice: {{payload.device}}\\nMessage: {{payload.message}}\\nTime: {{payload.timestamp}}\\n\\nPlease investigate.\",\n        \"output\": \"str\",\n        \"x\": 1180,\n        \"y\": 180,\n        \"wires\": [\n            [\"email-sender\", \"telegram-sender\"]\n        ]\n    },\n    {\n        \"id\": \"info-notification\",\n        \"type\": \"template\",\n        \"z\": \"da-tab\",\n        \"name\": \"Info Alert\",\n        \"field\": \"payload\",\n        \"fieldType\": \"msg\",\n        \"format\": \"handlebars\",\n        \"syntax\": \"mustache\",\n        \"template\": \"ℹ️ INFO ALERT ℹ️\\n\\nDevice: {{payload.device}}\\nMessage: {{payload.message}}\\nTime: {{payload.timestamp}}\\n\\nFor your information.\",\n        \"output\": \"str\",\n        \"x\": 1180,\n        \"y\": 220,\n        \"wires\": [\n            [\"telegram-sender\"]\n        ]\n    },\n    {\n        \"id\": \"db-writer\",\n        \"type\": \"sqlite\",\n        \"z\": \"da-tab\",\n        \"mydb\": \"sqlite-config\",\n        \"sqlquery\": \"prepared\",\n        \"sql\": \"INSERT INTO device_data (timestamp, device_type, data) VALUES (?, ?, ?)\",\n        \"name\": \"Write to Database\",\n        \"x\": 780,\n        \"y\": 120,\n        \"wires\": [\n            []\n        ]\n    },\n    {\n        \"id\": \"file-writer\",\n        \"type\": \"file\",\n        \"z\": \"da-tab\",\n        \"name\": \"Write to Log File\",\n        \"filename\": \"./data/device_data.csv\",\n        \"appendNewline\": false,\n        \"createDir\": true,\n        \"overwriteFile\": \"false\",\n        \"encoding\": \"none\",\n        \"x\": 780,\n        \"y\": 160,\n        \"wires\": [\n            []\n        ]\n    },\n    {\n        \"id\": \"dashboard-sender\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Send to Dashboard\",\n        \"func\": \"// Route data to appropriate dashboard topics\\nconst data = msg.payload;\\n\\nconst messages = [];\\n\\n// Send device-specific data to dashboard\\nswitch(data.device) {\\n    case 'pv_inverter':\\n        messages.push({\\n            topic: 'pv/power',\\n            payload: data.ac_power\\n        });\\n        messages.push({\\n            topic: 'pv/efficiency',\\n            payload: data.efficiency\\n        });\\n        messages.push({\\n            topic: 'pv/status',\\n            payload: data.status === 3 ? 'Normal' : 'Fault'\\n        });\\n        break;\\n        \\n    case 'genset':\\n        messages.push({\\n            topic: 'genset/power',\\n            payload: data.ac_power\\n        });\\n        messages.push({\\n            topic: 'genset/status',\\n            payload: data.running ? 'Running' : 'Stopped'\\n        });\\n        messages.push({\\n            topic: 'genset/fuel',\\n            payload: data.fuel_level\\n        });\\n        break;\\n        \\n    case 'power_meter':\\n        messages.push({\\n            topic: 'grid/power',\\n            payload: data.total_active_power\\n        });\\n        messages.push({\\n            topic: 'grid/status',\\n            payload: data.grid_connected ? 'Connected' : 'Disconnected'\\n        });\\n        messages.push({\\n            topic: 'grid/direction',\\n            payload: data.exporting ? 'Export' : data.importing ? 'Import' : 'Balanced'\\n        });\\n        break;\\n}\\n\\nreturn [messages];\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 780,\n        \"y\": 240,\n        \"wires\": [\n            []\n        ]\n    },\n    {\n        \"id\": \"email-sender\",\n        \"type\": \"e-mail\",\n        \"z\": \"da-tab\",\n        \"server\": \"smtp.gmail.com\",\n        \"port\": \"465\",\n        \"secure\": true,\n        \"tls\": true,\n        \"name\": \"Send Alert Email\",\n        \"dname\": \"PV Grid Monitor\",\n        \"x\": 1400,\n        \"y\": 140,\n        \"wires\": []\n    },\n    {\n        \"id\": \"sms-sender\",\n        \"type\": \"function\",\n        \"z\": \"da-tab\",\n        \"name\": \"Send SMS\",\n        \"func\": \"// SMS sending logic would go here\\n// This is a placeholder for SMS gateway integration\\nnode.log('SMS Alert: ' + msg.payload);\\nreturn msg;\",\n        \"outputs\": 1,\n        \"noerr\": 0,\n        \"initialize\": \"\",\n        \"finalize\": \"\",\n        \"libs\": [],\n        \"x\": 1400,\n        \"y\": 180,\n        \"wires\": []\n    },\n    {\n        \"id\": \"telegram-sender\",\n        \"type\": \"telegram sender\",\n        \"z\": \"da-tab\",\n        \"name\": \"Send Telegram\",\n        \"bot\": \"telegram-bot-config\",\n        \"haserroroutput\": false,\n        \"outputs\": 1,\n        \"x\": 1400,\n        \"y\": 220,\n        \"wires\": []\n    },\n    {\n        \"id\": \"sqlite-config\",\n        \"type\": \"sqlitedb\",\n        \"db\": \"./data/pv_monitoring.db\",\n        \"mode\": \"RWC\"\n    },\n    {\n        \"id\": \"telegram-bot-config\",\n        \"type\": \"telegram bot\",\n        \"botname\": \"PV Monitor Bot\",\n        \"usernames\": \"\",\n        \"chatids\": \"\",\n        \"baseapiurl\": \"\",\n        \"updatemode\": \"polling\",\n        \"pollinterval\": \"300\",\n        \"usesocks\": false,\n        \"sockshost\": \"\",\n        \"socksport\": \"6667\",\n        \"socksusername\": \"anonymous\",\n        \"sockspassword\": \"\",\n        \"bothost\": \"\",\n        \"botpath\": \"\",\n        \"localbotport\": \"8443\",\n        \"publicbotport\": \"8443\",\n        \"privatekey\": \"\",\n        \"certificate\": \"\",\n        \"useselfsignedcertificate\": false,\n        \"sslterminated\": false,\n        \"verboselogging\": false\n    }\n]"
+        "x": 160,
+        "y": 280,
+        "wires": [
+            ["power-meter-parser"]
+        ]
+    },
+    {
+        "id": "power-meter-parser",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Parse Power Meter Data",
+        "func": "// Parse power meter Modbus data\n// Typical registers for power meters:\n// 40001-40002: Total Active Power (W)\n// 40003-40004: L1 Active Power (W)\n// 40005-40006: L2 Active Power (W)\n// 40007-40008: L3 Active Power (W)\n// 40009-40010: Total Reactive Power (VAR)\n// 40011-40012: Total Apparent Power (VA)\n// 40013: L1 Voltage (V)\n// 40014: L2 Voltage (V)\n// 40015: L3 Voltage (V)\n// 40016: L1 Current (A)\n// 40017: L2 Current (A)\n// 40018: L3 Current (A)\n// 40019: Frequency (Hz)\n// 40020: Power Factor\n// 40021-40022: Total Energy Import (kWh)\n// 40023-40024: Total Energy Export (kWh)\n// 40025: Direction (Import/Export)\n\nconst buffer = msg.payload.buffer;\nconst data = msg.payload.data;\n\nif (buffer && buffer.length >= 50) {\n    const parsed = {\n        timestamp: new Date().toISOString(),\n        device: 'power_meter',\n        total_active_power: buffer.readInt32BE(0) / 10, // W (signed for import/export)\n        l1_active_power: buffer.readInt32BE(4) / 10, // W\n        l2_active_power: buffer.readInt32BE(8) / 10, // W\n        l3_active_power: buffer.readInt32BE(12) / 10, // W\n        total_reactive_power: buffer.readInt32BE(16) / 10, // VAR\n        total_apparent_power: buffer.readUInt32BE(20) / 10, // VA\n        l1_voltage: buffer.readUInt16BE(24) / 10, // V\n        l2_voltage: buffer.readUInt16BE(26) / 10, // V\n        l3_voltage: buffer.readUInt16BE(28) / 10, // V\n        l1_current: buffer.readUInt16BE(30) / 100, // A\n        l2_current: buffer.readUInt16BE(32) / 100, // A\n        l3_current: buffer.readUInt16BE(34) / 100, // A\n        frequency: buffer.readUInt16BE(36) / 100, // Hz\n        power_factor: buffer.readInt16BE(38) / 1000, // PF\n        total_energy_import: buffer.readUInt32BE(40) / 100, // kWh\n        total_energy_export: buffer.readUInt32BE(44) / 100, // kWh\n        direction: buffer.readUInt16BE(48) // 0=Import, 1=Export\n    };\n    \n    // Determine grid status\n    parsed.grid_connected = Math.abs(parsed.total_active_power) > 50; // Threshold for grid connection\n    parsed.exporting = parsed.total_active_power < -100; // Negative power indicates export\n    parsed.importing = parsed.total_active_power > 100; // Positive power indicates import\n    \n    // Store in global context for use by other flows\n    global.set('power_meter_data', parsed);\n    \n    msg.payload = parsed;\n    msg.topic = 'grid/data';\n    \n    return msg;\n} else {\n    node.error('Invalid data length from power meter');\n    return null;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 280,
+        "wires": [
+            ["data-logger", "grid-status-check"]
+        ]
+    },
+    {
+        "id": "data-logger",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Data Logger",
+        "func": "// Log all device data to database and files\n// This function receives data from all devices and formats it for storage\n\nconst timestamp = new Date().toISOString();\nconst deviceData = msg.payload;\n\n// Create standardized log entry\nconst logEntry = {\n    timestamp: timestamp,\n    device_type: deviceData.device,\n    data: deviceData\n};\n\n// Send to database\nmsg.database = {\n    topic: 'INSERT',\n    payload: logEntry\n};\n\n// Send to file logger\nmsg.file = {\n    topic: 'log',\n    payload: `${timestamp},${deviceData.device},${JSON.stringify(deviceData)}\\n`\n};\n\n// Send to dashboard for real-time display\nmsg.dashboard = deviceData;\n\n// Store in context for other flows\ncontext.set(`last_${deviceData.device}_data`, deviceData);\n\nreturn [msg, msg.database, msg.file, msg.dashboard];",
+        "outputs": 4,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 180,
+        "wires": [
+            [],
+            ["db-writer"],
+            ["file-writer"],
+            ["dashboard-sender"]
+        ]
+    },
+    {
+        "id": "pv-status-check",
+        "type": "function",
+        "z": "da-tab",
+        "name": "PV Status Check",
+        "func": "// Check PV inverter status and generate alerts if needed\nconst data = msg.payload;\nconst alerts = [];\n\n// Check for PV inverter faults\nif (data.status !== 3) { // Assuming 3 = normal operation\n    alerts.push({\n        type: 'warning',\n        device: 'pv_inverter',\n        message: `PV Inverter status abnormal: ${data.status}`,\n        timestamp: data.timestamp\n    });\n}\n\n// Check for temperature issues\nif (data.temperature > 70) {\n    alerts.push({\n        type: 'warning',\n        device: 'pv_inverter',\n        message: `PV Inverter temperature high: ${data.temperature}°C`,\n        timestamp: data.timestamp\n    });\n}\n\n// Check for low efficiency\nif (data.efficiency < 80 && data.dc_power > 1000) {\n    alerts.push({\n        type: 'info',\n        device: 'pv_inverter',\n        message: `PV Inverter efficiency low: ${data.efficiency.toFixed(1)}%`,\n        timestamp: data.timestamp\n    });\n}\n\nif (alerts.length > 0) {\n    msg.payload = alerts;\n    return msg;\n}\n\nreturn null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 80,
+        "wires": [
+            ["alert-handler"]
+        ]
+    },
+    {
+        "id": "genset-status-check",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Genset Status Check",
+        "func": "// Check genset status and generate alerts if needed\nconst data = msg.payload;\nconst alerts = [];\n\n// Check for genset alarms (assuming bit-mapped status)\nif (data.status & 0x01) {\n    alerts.push({\n        type: 'critical',\n        device: 'genset',\n        message: 'Genset emergency stop active',\n        timestamp: data.timestamp\n    });\n}\n\nif (data.status & 0x02) {\n    alerts.push({\n        type: 'warning',\n        device: 'genset',\n        message: 'Genset low oil pressure',\n        timestamp: data.timestamp\n    });\n}\n\nif (data.status & 0x04) {\n    alerts.push({\n        type: 'warning',\n        device: 'genset',\n        message: 'Genset high temperature',\n        timestamp: data.timestamp\n    });\n}\n\n// Check operational parameters\nif (data.running && data.engine_temp > 95) {\n    alerts.push({\n        type: 'warning',\n        device: 'genset',\n        message: `Genset engine temperature high: ${data.engine_temp}°C`,\n        timestamp: data.timestamp\n    });\n}\n\nif (data.running && data.oil_pressure < 2.0) {\n    alerts.push({\n        type: 'critical',\n        device: 'genset',\n        message: `Genset oil pressure low: ${data.oil_pressure} bar`,\n        timestamp: data.timestamp\n    });\n}\n\nif (data.fuel_level < 20) {\n    alerts.push({\n        type: 'warning',\n        device: 'genset',\n        message: `Genset fuel level low: ${data.fuel_level}%`,\n        timestamp: data.timestamp\n    });\n}\n\nif (alerts.length > 0) {\n    msg.payload = alerts;\n    return msg;\n}\n\nreturn null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 180,
+        "wires": [
+            ["alert-handler"]
+        ]
+    },
+    {
+        "id": "grid-status-check",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Grid Status Check",
+        "func": "// Check grid/power meter status and generate alerts if needed\nconst data = msg.payload;\nconst alerts = [];\n\n// Check for voltage issues\nconst voltages = [data.l1_voltage, data.l2_voltage, data.l3_voltage];\nconst avgVoltage = voltages.reduce((a, b) => a + b, 0) / 3;\n\nif (avgVoltage < 200 || avgVoltage > 250) {\n    alerts.push({\n        type: 'warning',\n        device: 'power_meter',\n        message: `Grid voltage abnormal: ${avgVoltage.toFixed(1)}V`,\n        timestamp: data.timestamp\n    });\n}\n\n// Check for frequency issues\nif (data.frequency < 49.5 || data.frequency > 50.5) {\n    alerts.push({\n        type: 'warning',\n        device: 'power_meter',\n        message: `Grid frequency abnormal: ${data.frequency}Hz`,\n        timestamp: data.timestamp\n    });\n}\n\n// Check for excessive export\nif (data.exporting && Math.abs(data.total_active_power) > 10000) {\n    alerts.push({\n        type: 'info',\n        device: 'power_meter',\n        message: `High export power: ${Math.abs(data.total_active_power)}W`,\n        timestamp: data.timestamp\n    });\n}\n\n// Check for power factor issues\nif (Math.abs(data.power_factor) < 0.8) {\n    alerts.push({\n        type: 'info',\n        device: 'power_meter',\n        message: `Poor power factor: ${data.power_factor}`,\n        timestamp: data.timestamp\n    });\n}\n\nif (alerts.length > 0) {\n    msg.payload = alerts;\n    return msg;\n}\n\nreturn null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 280,
+        "wires": [
+            ["alert-handler"]
+        ]
+    },
+    {
+        "id": "alert-handler",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Alert Handler",
+        "func": "// Process and route alerts\nconst alerts = msg.payload;\n\nif (!Array.isArray(alerts)) {\n    return null;\n}\n\nconst messages = [];\n\nalerts.forEach(alert => {\n    // Log alert\n    node.log(`ALERT [${alert.type.toUpperCase()}] ${alert.device}: ${alert.message}`);\n    \n    // Store in context for dashboard\n    const currentAlerts = context.get('active_alerts') || [];\n    currentAlerts.push(alert);\n    context.set('active_alerts', currentAlerts);\n    \n    // Create message for notification system\n    const alertMsg = {\n        topic: `alert/${alert.type}`,\n        payload: alert\n    };\n    \n    messages.push(alertMsg);\n});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 780,
+        "y": 180,
+        "wires": [
+            ["notification-router"]
+        ]
+    },
+    {
+        "id": "notification-router",
+        "type": "switch",
+        "z": "da-tab",
+        "name": "Notification Router",
+        "property": "payload.type",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "critical",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "warning",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "info",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 980,
+        "y": 180,
+        "wires": [
+            ["critical-notification"],
+            ["warning-notification"],
+            ["info-notification"]
+        ]
+    },
+    {
+        "id": "critical-notification",
+        "type": "template",
+        "z": "da-tab",
+        "name": "Critical Alert",
+        "field": "payload",
+        "fieldType": "msg",
+        "format": "handlebars",
+        "syntax": "mustache",
+        "template": "🚨 CRITICAL ALERT 🚨\n\nDevice: {{payload.device}}\nMessage: {{payload.message}}\nTime: {{payload.timestamp}}\n\nImmediate action required!",
+        "output": "str",
+        "x": 1180,
+        "y": 140,
+        "wires": [
+            ["email-sender", "sms-sender"]
+        ]
+    },
+    {
+        "id": "warning-notification",
+        "type": "template",
+        "z": "da-tab",
+        "name": "Warning Alert",
+        "field": "payload",
+        "fieldType": "msg",
+        "format": "handlebars",
+        "syntax": "mustache",
+        "template": "⚠️ WARNING ALERT ⚠️\n\nDevice: {{payload.device}}\nMessage: {{payload.message}}\nTime: {{payload.timestamp}}\n\nPlease investigate.",
+        "output": "str",
+        "x": 1180,
+        "y": 180,
+        "wires": [
+            ["email-sender", "telegram-sender"]
+        ]
+    },
+    {
+        "id": "info-notification",
+        "type": "template",
+        "z": "da-tab",
+        "name": "Info Alert",
+        "field": "payload",
+        "fieldType": "msg",
+        "format": "handlebars",
+        "syntax": "mustache",
+        "template": "ℹ️ INFO ALERT ℹ️\n\nDevice: {{payload.device}}\nMessage: {{payload.message}}\nTime: {{payload.timestamp}}\n\nFor your information.",
+        "output": "str",
+        "x": 1180,
+        "y": 220,
+        "wires": [
+            ["telegram-sender"]
+        ]
+    },
+    {
+        "id": "db-writer",
+        "type": "sqlite",
+        "z": "da-tab",
+        "mydb": "sqlite-config",
+        "sqlquery": "prepared",
+        "sql": "INSERT INTO device_data (timestamp, device_type, data) VALUES (?, ?, ?)",
+        "name": "Write to Database",
+        "x": 780,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "file-writer",
+        "type": "file",
+        "z": "da-tab",
+        "name": "Write to Log File",
+        "filename": "./data/device_data.csv",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 780,
+        "y": 160,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "dashboard-sender",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Send to Dashboard",
+        "func": "// Route data to appropriate dashboard topics\nconst data = msg.payload;\n\nconst messages = [];\n\n// Send device-specific data to dashboard\nswitch(data.device) {\n    case 'pv_inverter':\n        messages.push({\n            topic: 'pv/power',\n            payload: data.ac_power\n        });\n        messages.push({\n            topic: 'pv/efficiency',\n            payload: data.efficiency\n        });\n        messages.push({\n            topic: 'pv/status',\n            payload: data.status === 3 ? 'Normal' : 'Fault'\n        });\n        break;\n        \n    case 'genset':\n        messages.push({\n            topic: 'genset/power',\n            payload: data.ac_power\n        });\n        messages.push({\n            topic: 'genset/status',\n            payload: data.running ? 'Running' : 'Stopped'\n        });\n        messages.push({\n            topic: 'genset/fuel',\n            payload: data.fuel_level\n        });\n        break;\n        \n    case 'power_meter':\n        messages.push({\n            topic: 'grid/power',\n            payload: data.total_active_power\n        });\n        messages.push({\n            topic: 'grid/status',\n            payload: data.grid_connected ? 'Connected' : 'Disconnected'\n        });\n        messages.push({\n            topic: 'grid/direction',\n            payload: data.exporting ? 'Export' : data.importing ? 'Import' : 'Balanced'\n        });\n        break;\n}\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 780,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "email-sender",
+        "type": "e-mail",
+        "z": "da-tab",
+        "server": "smtp.gmail.com",
+        "port": "465",
+        "secure": true,
+        "tls": true,
+        "name": "Send Alert Email",
+        "dname": "PV Grid Monitor",
+        "x": 1400,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "sms-sender",
+        "type": "function",
+        "z": "da-tab",
+        "name": "Send SMS",
+        "func": "// SMS sending logic would go here\n// This is a placeholder for SMS gateway integration\nnode.log('SMS Alert: ' + msg.payload);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1400,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "telegram-sender",
+        "type": "telegram sender",
+        "z": "da-tab",
+        "name": "Send Telegram",
+        "bot": "telegram-bot-config",
+        "haserroroutput": false,
+        "outputs": 1,
+        "x": 1400,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "sqlite-config",
+        "type": "sqlitedb",
+        "db": "./data/pv_monitoring.db",
+        "mode": "RWC"
+    },
+    {
+        "id": "telegram-bot-config",
+        "type": "telegram bot",
+        "botname": "PV Monitor Bot",
+        "usernames": "",
+        "chatids": "",
+        "baseapiurl": "",
+        "updatemode": "polling",
+        "pollinterval": "300",
+        "usesocks": false,
+        "sockshost": "",
+        "socksport": "6667",
+        "socksusername": "anonymous",
+        "sockspassword": "",
+        "bothost": "",
+        "botpath": "",
+        "localbotport": "8443",
+        "publicbotport": "8443",
+        "privatekey": "",
+        "certificate": "",
+        "useselfsignedcertificate": false,
+        "sslterminated": false,
+        "verboselogging": false
+    }
+]
