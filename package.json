@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node-red --settings settings.js",
     "dev": "node-red --settings settings.js --userDir ./data",
-    "install-flows": "npm run install-deps && node setup.js"
+    "test": "echo \"No tests defined\"",
+    "verify": "./verify.sh"
   },
   "keywords": [
     "node-red",
