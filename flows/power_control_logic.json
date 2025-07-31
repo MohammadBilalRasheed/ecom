@@ -1,0 +1,253 @@
+[
+  {
+    "id": "control_logic_flow",
+    "type": "tab",
+    "label": "Power Control Logic",
+    "disabled": false,
+    "info": "Advanced control logic for zero export, load sharing, and genset management"
+  },
+  {
+    "id": "control_coordinator",
+    "type": "function",
+    "name": "Control Coordinator",
+    "func": "// Main control coordination logic - processes device data and makes control decisions\nconst devices = global.get('devices') || {};\nconst control = global.get('control') || { zeroExportThreshold: 50, loadShareRampRate: 1.0, pvPriority: true };\n\n// Get latest device data\nconst huawei = devices['Huawei SmartLogger 3000A'] || {};\nconst gc600 = devices['SICES GC600'] || {};\nconst mc200 = devices['SICES MC200'] || {};\n\n// Calculate system status\nconst systemStatus = {\n  timestamp: new Date().toISOString(),\n  pv_power: parseFloat(huawei.active_power) || 0,\n  genset_power: parseFloat(gc600.active_power) || 0,\n  grid_power: parseFloat(mc200.active_power_total) || 0,\n  is_exporting: mc200.is_exporting || false,\n  export_power: mc200.is_exporting ? Math.abs(parseFloat(mc200.active_power_total) || 0) : 0\n};\n\n// Control logic decisions\nconst commands = [];\n\n// Zero Export Logic\nif (systemStatus.is_exporting && systemStatus.export_power > control.zeroExportThreshold) {\n  const curtailment = Math.min(100, (systemStatus.export_power / systemStatus.pv_power) * 100);\n  commands.push({\n    device: 'Huawei SmartLogger 3000A',\n    action: 'curtail_power',\n    value: 100 - curtailment,\n    reason: 'Zero export protection'\n  });\n}\n\n// Load Sharing Logic\nconst totalLoad = systemStatus.pv_power + systemStatus.genset_power - systemStatus.grid_power;\nif (totalLoad > 0 && control.pvPriority) {\n  const pvContribution = Math.min(100, (systemStatus.pv_power / totalLoad) * 100);\n  const gensetTarget = Math.max(0, 100 - pvContribution);\n  \n  if (Math.abs(gensetTarget - (systemStatus.genset_power / totalLoad * 100)) > 5) {\n    commands.push({\n      device: 'SICES GC600',\n      action: 'set_power_setpoint',\n      value: gensetTarget,\n      reason: 'Load sharing optimization'\n    });\n  }\n}\n\n// Package output\nmsg.payload = {\n  timestamp: systemStatus.timestamp,\n  system_status: systemStatus,\n  load_sharing: {\n    pv_contribution: systemStatus.pv_power > 0 ? (systemStatus.pv_power / (systemStatus.pv_power + systemStatus.genset_power)) * 100 : 0,\n    genset_contribution: systemStatus.genset_power > 0 ? (systemStatus.genset_power / (systemStatus.pv_power + systemStatus.genset_power)) * 100 : 0\n  },\n  commands: commands\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 400,
+    "y": 140,
+    "z": "control_logic_flow",
+    "wires": [
+      ["control_command_dispatcher", "control_logger"]
+    ]
+  },
+  {
+    "id": "control_command_dispatcher",
+    "type": "function",
+    "name": "Command Dispatcher",
+    "func": "// Dispatch control commands to appropriate devices\nconst commands = msg.payload.commands || [];\n\n// Process each command\ncommands.forEach(command => {\n  const commandMsg = {\n    topic: `control/${command.device.toLowerCase().replace(/\\s+/g, '_')}`,\n    payload: command,\n    timestamp: new Date().toISOString()\n  };\n  \n  node.send(commandMsg);\n});\n\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 600,
+    "y": 180,
+    "z": "control_logic_flow",
+    "wires": [
+      ["huawei_write_handler", "gc600_write_handler", "mc200_write_handler"]
+    ]
+  },
+  {
+    "id": "huawei_write_handler",
+    "type": "switch",
+    "name": "Huawei Commands",
+    "property": "topic",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "cont",
+        "v": "huawei_smartlogger_3000a",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 1,
+    "x": 800,
+    "y": 140,
+    "z": "control_logic_flow",
+    "wires": [
+      ["huawei_modbus_write"]
+    ]
+  },
+  {
+    "id": "gc600_write_handler",
+    "type": "switch",
+    "name": "GC600 Commands",
+    "property": "topic",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "cont",
+        "v": "sices_gc600",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 1,
+    "x": 800,
+    "y": 180,
+    "z": "control_logic_flow",
+    "wires": [
+      ["gc600_modbus_write"]
+    ]
+  },
+  {
+    "id": "mc200_write_handler",
+    "type": "switch",
+    "name": "MC200 Commands",
+    "property": "topic",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "cont",
+        "v": "sices_mc200",
+        "vt": "str"
+      }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 1,
+    "x": 800,
+    "y": 220,
+    "z": "control_logic_flow",
+    "wires": [
+      ["mc200_modbus_write"]
+    ]
+  },
+  {
+    "id": "huawei_modbus_write",
+    "type": "modbus-write",
+    "name": "Huawei Modbus Write",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "unitid": "1",
+    "dataType": "HoldingRegister",
+    "adr": "",
+    "quantity": "",
+    "server": "huawei_client",
+    "emptyMsgOnFail": false,
+    "keepMsgProperties": false,
+    "x": 1000,
+    "y": 140,
+    "z": "control_logic_flow",
+    "wires": [
+      ["write_confirmation"]
+    ]
+  },
+  {
+    "id": "gc600_modbus_write",
+    "type": "modbus-write",
+    "name": "GC600 Modbus Write",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "unitid": "1",
+    "dataType": "HoldingRegister",
+    "adr": "",
+    "quantity": "",
+    "server": "sices_gc600_client",
+    "emptyMsgOnFail": false,
+    "keepMsgProperties": false,
+    "x": 1000,
+    "y": 180,
+    "z": "control_logic_flow",
+    "wires": [
+      ["write_confirmation"]
+    ]
+  },
+  {
+    "id": "mc200_modbus_write",
+    "type": "modbus-write",
+    "name": "MC200 Modbus Write",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "unitid": "1",
+    "dataType": "HoldingRegister",
+    "adr": "",
+    "quantity": "",
+    "server": "sices_mc200_client",
+    "emptyMsgOnFail": false,
+    "keepMsgProperties": false,
+    "x": 1000,
+    "y": 220,
+    "z": "control_logic_flow",
+    "wires": [
+      ["write_confirmation"]
+    ]
+  },
+  {
+    "id": "control_logger",
+    "type": "function",
+    "name": "Control Logger",
+    "func": "// Log control decisions and system status\nconst data = msg.payload;\nconst logEntry = {\n  timestamp: data.timestamp,\n  system_status: data.system_status,\n  load_sharing: data.load_sharing,\n  commands_issued: data.commands.length,\n  commands: data.commands.map(cmd => ({\n    device: cmd.device,\n    action: cmd.action,\n    value: cmd.value,\n    reason: cmd.reason\n  }))\n};\n\n// Store in context for dashboard\nconst controlHistory = context.get('controlHistory') || [];\ncontrolHistory.push(logEntry);\n\n// Keep only last 100 entries\nif (controlHistory.length > 100) {\n  controlHistory.shift();\n}\n\ncontext.set('controlHistory', controlHistory);\nglobal.set('lastControlDecision', logEntry);\n\nmsg.payload = logEntry;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 600,
+    "y": 240,
+    "z": "control_logic_flow",
+    "wires": [
+      ["dashboard_control_update"]
+    ]
+  },
+  {
+    "id": "write_confirmation",
+    "type": "function",
+    "name": "Write Confirmation",
+    "func": "// Log successful/failed write operations\nconst confirmation = {\n  timestamp: new Date().toISOString(),\n  device: msg.payload.device || 'unknown',\n  success: !msg.error,\n  error: msg.error || null,\n  address: msg.payload.address,\n  value: msg.payload.value\n};\n\n// Store confirmation for monitoring\nconst writeHistory = context.get('writeHistory') || [];\nwriteHistory.push(confirmation);\n\nif (writeHistory.length > 50) {\n  writeHistory.shift();\n}\n\ncontext.set('writeHistory', writeHistory);\n\nmsg.payload = confirmation;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 1200,
+    "y": 180,
+    "z": "control_logic_flow",
+    "wires": [
+      ["command_status_logger"]
+    ]
+  },
+  {
+    "id": "dashboard_control_update",
+    "type": "debug",
+    "name": "Control Dashboard Update",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 820,
+    "y": 240,
+    "z": "control_logic_flow"
+  },
+  {
+    "id": "command_status_logger",
+    "type": "debug",
+    "name": "Command Status",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1200,
+    "y": 240,
+    "z": "control_logic_flow"
+  },
+  {
+    "id": "control_timer",
+    "type": "inject",
+    "name": "Control Loop Timer",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "10",
+    "topic": "control/timer",
+    "payload": "",
+    "payloadType": "date",
+    "x": 180,
+    "y": 140,
+    "z": "control_logic_flow",
+    "wires": [
+      ["control_coordinator"]
+    ]
+  }
+]

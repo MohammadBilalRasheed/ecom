@@ -1,0 +1,44 @@
+{
+  "name": "ecom-modbus-power-control",
+  "version": "1.0.0",
+  "description": "Professional Industrial Node-RED System for Modbus Integration & Power Control Logic",
+  "main": "settings.js",
+  "scripts": {
+    "start": "node-red --settings settings.js",
+    "dev": "node-red --settings settings.js --userDir ./data",
+    "test": "echo \"No tests defined\"",
+    "verify": "./verify.sh"
+  },
+  "keywords": [
+    "node-red",
+    "modbus",
+    "industrial",
+    "power-control",
+    "huawei",
+    "sices",
+    "pv-inverter",
+    "genset",
+    "grid-monitoring"
+  ],
+  "author": "Industrial Automation Team",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "node-red": "^3.1.0",
+    "@flowfuse/node-red-dashboard": "^1.14.0",
+    "node-red-contrib-modbus": "^5.29.1",
+    "node-red-contrib-buffer-parser": "^3.0.6",
+    "node-red-node-sqlite": "^1.0.3",
+    "node-red-contrib-cron-plus": "^1.5.1",
+    "node-red-contrib-moment": "^4.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MohammadBilalRasheed/ecom.git"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "device": "Huawei SmartLogger 3000A",
+  "ip": "192.168.88.4",
+  "port": 502,
+  "unitId": 1,
+  "description": "PV Inverter Data Collection and Monitoring",
+  "registers": {
+    "input_registers": {
+      "active_power": {
+        "address": 32064,
+        "type": "int32",
+        "scale": 1000,
+        "unit": "kW",
+        "description": "Active Power Output"
+      },
+      "reactive_power": {
+        "address": 32066,
+        "type": "int32", 
+        "scale": 1000,
+        "unit": "kVar",
+        "description": "Reactive Power Output"
+      },
+      "power_factor": {
+        "address": 32068,
+        "type": "int16",
+        "scale": 1000,
+        "unit": "",
+        "description": "Power Factor"
+      },
+      "phase_a_voltage": {
+        "address": 32069,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "Phase A Voltage"
+      },
+      "phase_b_voltage": {
+        "address": 32070,
+        "type": "uint16", 
+        "scale": 10,
+        "unit": "V",
+        "description": "Phase B Voltage"
+      },
+      "phase_c_voltage": {
+        "address": 32071,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "V",
+        "description": "Phase C Voltage"
+      },
+      "phase_a_current": {
+        "address": 32072,
+        "type": "int16",
+        "scale": 100,
+        "unit": "A",
+        "description": "Phase A Current"
+      },
+      "phase_b_current": {
+        "address": 32073,
+        "type": "int16",
+        "scale": 100,
+        "unit": "A", 
+        "description": "Phase B Current"
+      },
+      "phase_c_current": {
+        "address": 32074,
+        "type": "int16",
+        "scale": 100,
+        "unit": "A",
+        "description": "Phase C Current"
+      },
+      "frequency": {
+        "address": 32085,
+        "type": "uint16",
+        "scale": 100,
+        "unit": "Hz",
+        "description": "Grid Frequency"
+      },
+      "daily_energy": {
+        "address": 32114,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Daily Energy Production"
+      },
+      "total_energy": {
+        "address": 32106,
+        "type": "uint32",
+        "scale": 100,
+        "unit": "kWh",
+        "description": "Total Energy Production"
+      },
+      "status_1": {
+        "address": 32089,
+        "type": "uint16",
+        "unit": "",
+        "description": "Device Status 1"
+      },
+      "status_2": {
+        "address": 32090,
+        "type": "uint16",
+        "unit": "",
+        "description": "Device Status 2"
+      },
+      "alarm_1": {
+        "address": 32091,
+        "type": "uint16",
+        "unit": "",
+        "description": "Alarm Status 1"
+      },
+      "alarm_2": {
+        "address": 32092,
+        "type": "uint16",
+        "unit": "",
+        "description": "Alarm Status 2"
+      }
+    },
+    "holding_registers": {
+      "power_limit": {
+        "address": 47415,
+        "type": "uint16",
+        "scale": 10,
+        "unit": "%",
+        "description": "Active Power Limit Setpoint",
+        "writable": true
+      },
+      "reactive_power_setpoint": {
+        "address": 47416,
+        "type": "int16",
+        "scale": 10,
+        "unit": "%",
+        "description": "Reactive Power Setpoint",
+        "writable": true
+      }
+    }
+  },
+  "polling_interval": 2000,
+  "timeout": 5000,
+  "retries": 3
+}
