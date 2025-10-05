@@ -1,0 +1,281 @@
+[
+    {
+        "id": "rp-tab",
+        "type": "tab",
+        "label": "Reporting & Cloud",
+        "disabled": false,
+        "info": "Flow for generating reports and cloud integration for data export and remote monitoring.",
+        "env": []
+    },
+    {
+        "id": "daily-report-trigger",
+        "type": "cron-plus",
+        "z": "rp-tab",
+        "name": "Daily Report Trigger",
+        "outputField": "payload",
+        "timeZone": "",
+        "persistDynamic": false,
+        "commandResponseMsgOutput": "output1",
+        "outputs": 1,
+        "options": [
+            {
+                "name": "daily-report",
+                "topic": "daily_report",
+                "payloadType": "default",
+                "payload": "",
+                "expressionType": "cron",
+                "expression": "0 0 * * *",
+                "location": "",
+                "offset": "0",
+                "solarType": "all",
+                "solarEvents": "sunrise,sunset"
+            }
+        ],
+        "x": 140,
+        "y": 80,
+        "wires": [
+            ["daily-report-generator"]
+        ]
+    },
+    {
+        "id": "daily-report-generator",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Daily Report Generator",
+        "func": "// Generate comprehensive daily report\nconst moment = require('moment');\nconst yesterday = moment().subtract(1, 'day');\nconst reportDate = yesterday.format('YYYY-MM-DD');\n\n// Query database for yesterday's data\nconst query = {\n    topic: 'SELECT',\n    payload: {\n        sql: `SELECT * FROM device_data WHERE DATE(timestamp) = '${reportDate}' ORDER BY timestamp`,\n        params: []\n    }\n};\n\nmsg.reportType = 'daily';\nmsg.reportDate = reportDate;\nmsg.query = query;\n\nnode.log(`Generating daily report for ${reportDate}`);\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 80,
+        "wires": [
+            ["database-query"]
+        ]
+    },
+    {
+        "id": "database-query",
+        "type": "sqlite",
+        "z": "rp-tab",
+        "mydb": "sqlite-config",
+        "sqlquery": "msg.query.topic",
+        "sql": "",
+        "name": "Query Historical Data",
+        "x": 620,
+        "y": 140,
+        "wires": [
+            ["report-processor"]
+        ]
+    },
+    {
+        "id": "report-processor",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Report Data Processor",
+        "func": "// Process query results and generate report data\nconst moment = require('moment');\nconst reportData = msg.payload || [];\nconst reportType = msg.reportType;\nconst reportDate = msg.reportDate || msg.reportPeriod;\n\n// Initialize report structure\nconst report = {\n    type: reportType,\n    period: reportDate,\n    generated_at: moment().format('YYYY-MM-DD HH:mm:ss'),\n    summary: {\n        total_pv_energy: 0,\n        total_genset_energy: 0,\n        total_grid_import: 0,\n        total_grid_export: 0,\n        fuel_consumed: 0,\n        fuel_saved: 0,\n        co2_avoided: 0,\n        cost_savings: 0\n    },\n    performance: {\n        avg_pv_efficiency: 0,\n        avg_system_efficiency: 0,\n        peak_solar_power: 0,\n        peak_load_power: 0,\n        genset_runtime_hours: 0,\n        grid_connection_uptime: 0\n    }\n};\n\n// Process daily data\nconst pvData = reportData.filter(row => {\n    try {\n        const data = JSON.parse(row.data);\n        return data.device === 'pv_inverter';\n    } catch (e) {\n        return false;\n    }\n});\n\nconst gensetData = reportData.filter(row => {\n    try {\n        const data = JSON.parse(row.data);\n        return data.device === 'genset';\n    } catch (e) {\n        return false;\n    }\n});\n\nconst gridData = reportData.filter(row => {\n    try {\n        const data = JSON.parse(row.data);\n        return data.device === 'power_meter';\n    } catch (e) {\n        return false;\n    }\n});\n\n// Calculate daily totals\nreport.summary.total_pv_energy = pvData.reduce((sum, row) => {\n    try {\n        const data = JSON.parse(row.data);\n        return sum + (data.ac_power || 0) * 10 / 3600000; // Convert to kWh\n    } catch (e) {\n        return sum;\n    }\n}, 0);\n\nreport.summary.total_genset_energy = gensetData.reduce((sum, row) => {\n    try {\n        const data = JSON.parse(row.data);\n        return sum + (data.ac_power || 0) * 10 / 3600000; // Convert to kWh\n    } catch (e) {\n        return sum;\n    }\n}, 0);\n\n// Calculate fuel consumption and savings\nreport.summary.fuel_consumed = report.summary.total_genset_energy * 0.3; // L/kWh estimate\nreport.summary.fuel_saved = report.summary.total_pv_energy * 0.3; // Fuel that would have been used\nreport.summary.co2_avoided = report.summary.total_pv_energy * 0.8; // kg CO2 per kWh avoided\nreport.summary.cost_savings = report.summary.fuel_saved * 1.5; // Cost per liter estimate\n\n// Performance metrics\nif (pvData.length > 0) {\n    const avgEfficiency = pvData.reduce((sum, row) => {\n        try {\n            const data = JSON.parse(row.data);\n            return sum + (data.efficiency || 0);\n        } catch (e) {\n            return sum;\n        }\n    }, 0) / pvData.length;\n    report.performance.avg_pv_efficiency = avgEfficiency;\n    \n    const peakPower = Math.max(...pvData.map(row => {\n        try {\n            const data = JSON.parse(row.data);\n            return data.ac_power || 0;\n        } catch (e) {\n            return 0;\n        }\n    }));\n    report.performance.peak_solar_power = peakPower;\n}\n\nif (gensetData.length > 0) {\n    const runningData = gensetData.filter(row => {\n        try {\n            const data = JSON.parse(row.data);\n            return data.running;\n        } catch (e) {\n            return false;\n        }\n    });\n    report.performance.genset_runtime_hours = runningData.length * 10 / 3600; // Convert intervals to hours\n}\n\n// Round all numeric values\nObject.keys(report.summary).forEach(key => {\n    if (typeof report.summary[key] === 'number') {\n        report.summary[key] = Math.round(report.summary[key] * 100) / 100;\n    }\n});\n\nObject.keys(report.performance).forEach(key => {\n    if (typeof report.performance[key] === 'number') {\n        report.performance[key] = Math.round(report.performance[key] * 100) / 100;\n    }\n});\n\n// Store report for different output formats\nmsg.payload = report;\nmsg.topic = `report/${reportType}`;\n\nnode.log(`${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report generated for ${reportDate}`);\nnode.log(`PV Energy: ${report.summary.total_pv_energy} kWh, Genset Energy: ${report.summary.total_genset_energy} kWh`);\nnode.log(`Fuel Saved: ${report.summary.fuel_saved} L, Cost Savings: $${report.summary.cost_savings}`);\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 280,
+        "wires": [
+            ["format-outputs"]
+        ]
+    },
+    {
+        "id": "format-outputs",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Format Report Outputs",
+        "func": "// Create multiple output formats for the report\nconst report = msg.payload;\nconst reportType = report.type;\nconst moment = require('moment');\n\nconst messages = [];\n\n// 1. JSON Format for API/Cloud\nconst jsonReport = {\n    topic: `export/json/${reportType}`,\n    payload: report,\n    filename: `${reportType}_report_${moment().format('YYYYMMDD')}.json`\n};\nmessages.push(jsonReport);\n\n// 2. CSV Format for Excel/Analysis\nconst csvData = [];\ncsvData.push(['Metric', 'Value', 'Unit']);\ncsvData.push(['Report Type', report.type, '']);\ncsvData.push(['Period', report.period, '']);\ncsvData.push(['Generated At', report.generated_at, '']);\ncsvData.push(['', '', '']); // Empty row\ncsvData.push(['ENERGY SUMMARY', '', '']);\ncsvData.push(['PV Energy', report.summary.total_pv_energy, 'kWh']);\ncsvData.push(['Genset Energy', report.summary.total_genset_energy, 'kWh']);\ncsvData.push(['Grid Import', report.summary.total_grid_import, 'kWh']);\ncsvData.push(['Grid Export', report.summary.total_grid_export, 'kWh']);\ncsvData.push(['', '', '']); // Empty row\ncsvData.push(['FUEL & SAVINGS', '', '']);\ncsvData.push(['Fuel Consumed', report.summary.fuel_consumed, 'L']);\ncsvData.push(['Fuel Saved', report.summary.fuel_saved, 'L']);\ncsvData.push(['CO2 Avoided', report.summary.co2_avoided, 'kg']);\ncsvData.push(['Cost Savings', report.summary.cost_savings, '$']);\ncsvData.push(['', '', '']); // Empty row\ncsvData.push(['PERFORMANCE', '', '']);\ncsvData.push(['Avg PV Efficiency', report.performance.avg_pv_efficiency, '%']);\ncsvData.push(['Peak Solar Power', report.performance.peak_solar_power, 'W']);\ncsvData.push(['Genset Runtime', report.performance.genset_runtime_hours, 'hours']);\n\nconst csvContent = csvData.map(row => row.join(',')).join('\\n');\n\nconst csvReport = {\n    topic: `export/csv/${reportType}`,\n    payload: csvContent,\n    filename: `${reportType}_report_${moment().format('YYYYMMDD')}.csv`\n};\nmessages.push(csvReport);\n\n// 3. HTML Format for Email/Web\nconst htmlContent = `\n<!DOCTYPE html>\n<html>\n<head>\n    <title>${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Energy Report</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 20px; }\n        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }\n        .summary { display: flex; flex-wrap: wrap; margin: 20px 0; }\n        .card { background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin: 10px; flex: 1; min-width: 200px; }\n        .card h3 { margin-top: 0; color: #333; }\n        .value { font-size: 24px; font-weight: bold; color: #4CAF50; }\n        .unit { font-size: 14px; color: #666; }\n        .footer { margin-top: 30px; padding: 20px; background-color: #f0f0f0; text-align: center; font-size: 12px; }\n    </style>\n</head>\n<body>\n    <div class=\"header\">\n        <h1>${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Energy Report</h1>\n        <p>Period: ${report.period} | Generated: ${report.generated_at}</p>\n    </div>\n    \n    <div class=\"summary\">\n        <div class=\"card\">\n            <h3>⚡ PV Energy</h3>\n            <div class=\"value\">${report.summary.total_pv_energy}</div>\n            <div class=\"unit\">kWh</div>\n        </div>\n        <div class=\"card\">\n            <h3>🔥 Genset Energy</h3>\n            <div class=\"value\">${report.summary.total_genset_energy}</div>\n            <div class=\"unit\">kWh</div>\n        </div>\n        <div class=\"card\">\n            <h3>⛽ Fuel Saved</h3>\n            <div class=\"value\">${report.summary.fuel_saved}</div>\n            <div class=\"unit\">Liters</div>\n        </div>\n        <div class=\"card\">\n            <h3>💰 Cost Savings</h3>\n            <div class=\"value\">$${report.summary.cost_savings}</div>\n            <div class=\"unit\">USD</div>\n        </div>\n        <div class=\"card\">\n            <h3>🌱 CO₂ Avoided</h3>\n            <div class=\"value\">${report.summary.co2_avoided}</div>\n            <div class=\"unit\">kg</div>\n        </div>\n    </div>\n    \n    <div class=\"footer\">\n        <p>Generated by PV Grid Monitoring System | ${moment().format('YYYY-MM-DD HH:mm:ss')}</p>\n    </div>\n</body>\n</html>\n`;\n\nconst htmlReport = {\n    topic: `export/html/${reportType}`,\n    payload: htmlContent,\n    filename: `${reportType}_report_${moment().format('YYYYMMDD')}.html`\n};\nmessages.push(htmlReport);\n\nnode.log(`Report formatted in JSON, CSV, and HTML formats for ${reportType} report`);\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 280,
+        "wires": [
+            ["export-router"]
+        ]
+    },
+    {
+        "id": "export-router",
+        "type": "switch",
+        "z": "rp-tab",
+        "name": "Export Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "regex",
+                "v": "^export/",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 1,
+        "x": 800,
+        "y": 280,
+        "wires": [
+            ["file-writer", "cloud-uploader"]
+        ]
+    },
+    {
+        "id": "file-writer",
+        "type": "file",
+        "z": "rp-tab",
+        "name": "Report File Writer",
+        "filename": "",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "true",
+        "encoding": "none",
+        "x": 1020,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "cloud-uploader",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Cloud Storage Uploader",
+        "func": "// Upload to cloud storage placeholder\nconst filename = msg.filename;\nconst data = msg.payload;\n\nnode.log(`Cloud upload simulated: ${filename}`);\nnode.warn('Cloud upload is simulated - implement with actual cloud storage nodes');\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1040,
+        "y": 300,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "manual-report-trigger",
+        "type": "ui_button",
+        "z": "rp-tab",
+        "name": "Generate Report",
+        "group": "reports-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "Generate Manual Report",
+        "tooltip": "Generate report for today",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "manual",
+        "payloadType": "str",
+        "topic": "manual_report",
+        "topicType": "str",
+        "x": 140,
+        "y": 200,
+        "wires": [
+            ["manual-report-processor"]
+        ]
+    },
+    {
+        "id": "manual-report-processor",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Manual Report Processor",
+        "func": "// Process manual report request for today\nconst moment = require('moment');\nconst today = moment().format('YYYY-MM-DD');\n\n// Query database for today's data\nconst query = {\n    topic: 'SELECT',\n    payload: {\n        sql: `SELECT * FROM device_data WHERE DATE(timestamp) = '${today}' ORDER BY timestamp`,\n        params: []\n    }\n};\n\nmsg.reportType = 'daily';\nmsg.reportDate = today;\nmsg.query = query;\n\nnode.log(`Manual daily report requested for ${today}`);\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 200,
+        "wires": [
+            ["database-query"]
+        ]
+    },
+    {
+        "id": "real-time-cloud-sync",
+        "type": "inject",
+        "z": "rp-tab",
+        "name": "Real-time Sync Timer",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "300",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "sync",
+        "payloadType": "str",
+        "x": 140,
+        "y": 360,
+        "wires": [
+            ["cloud-sync-processor"]
+        ]
+    },
+    {
+        "id": "cloud-sync-processor",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Cloud Sync Processor",
+        "func": "// Prepare real-time data for cloud synchronization\nconst moment = require('moment');\n\n// Get latest system data\nconst pvData = global.get('pv_data') || {};\nconst gensetData = global.get('genset_data') || {};\nconst gridData = global.get('power_meter_data') || {};\nconst systemState = global.get('system_state') || {};\n\n// Create real-time data package\nconst realTimeData = {\n    timestamp: moment().toISOString(),\n    site_id: 'PV_SITE_001', // Configure site identifier\n    data: {\n        pv: {\n            power: pvData.ac_power || 0,\n            voltage: pvData.dc_voltage || 0,\n            current: pvData.dc_current || 0,\n            efficiency: pvData.efficiency || 0,\n            temperature: pvData.temperature || 0,\n            status: pvData.status || 0\n        },\n        genset: {\n            power: gensetData.ac_power || 0,\n            running: gensetData.running || false,\n            fuel_level: gensetData.fuel_level || 0,\n            engine_temp: gensetData.engine_temp || 0,\n            oil_pressure: gensetData.oil_pressure || 0,\n            run_hours: gensetData.run_hours || 0\n        },\n        grid: {\n            power: gridData.total_active_power || 0,\n            voltage: ((gridData.l1_voltage || 0) + (gridData.l2_voltage || 0) + (gridData.l3_voltage || 0)) / 3,\n            frequency: gridData.frequency || 0,\n            power_factor: gridData.power_factor || 0,\n            connected: gridData.grid_connected || false\n        },\n        system: {\n            mode: systemState.grid_connected ? 'grid-connected' : 'off-grid',\n            load_power: systemState.load_power || 0,\n            total_generation: systemState.total_generation || 0\n        }\n    },\n    alarms: context.get('active_alerts') || []\n};\n\nnode.log('Real-time data prepared for cloud sync');\nnode.warn('Cloud sync is simulated - implement with actual cloud service nodes');\n\nmsg.payload = realTimeData;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 360,
+        "wires": [
+            ["cloud-logger"]
+        ]
+    },
+    {
+        "id": "cloud-logger",
+        "type": "function",
+        "z": "rp-tab",
+        "name": "Cloud Logger",
+        "func": "const data = msg.payload;\nnode.log(`Cloud sync: Site ${data.site_id}, PV: ${data.data.pv.power}W, Genset: ${data.data.genset.power}W`);\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "reports-group",
+        "type": "ui_group",
+        "name": "Report Generation",
+        "tab": "reports-tab",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "reports-tab",
+        "type": "ui_tab",
+        "name": "Reports",
+        "icon": "assessment",
+        "order": 4,
+        "disabled": false,
+        "hidden": false
+    }
+]

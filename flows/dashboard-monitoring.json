@@ -1,0 +1,1368 @@
+[
+    {
+        "id": "ui-tab",
+        "type": "tab",
+        "label": "Dashboard & Monitoring",
+        "disabled": false,
+        "info": "User interface and monitoring dashboard for real-time system visualization.",
+        "env": []
+    },
+    {
+        "id": "dashboard-init",
+        "type": "inject",
+        "z": "ui-tab",
+        "name": "Dashboard Init",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "",
+        "payload": "initialize",
+        "payloadType": "str",
+        "x": 120,
+        "y": 60,
+        "wires": [
+            ["dashboard-setup"]
+        ]
+    },
+    {
+        "id": "dashboard-setup",
+        "type": "function",
+        "z": "ui-tab",
+        "name": "Dashboard Setup",
+        "func": "// Initialize dashboard with default values\n\n// Set initial system state\nconst initialState = {\n    timestamp: new Date().toISOString(),\n    pv_power: 0,\n    genset_power: 0,\n    grid_power: 0,\n    load_power: 0,\n    system_mode: 'Initializing...',\n    grid_status: 'Unknown',\n    pv_status: 'Unknown',\n    genset_status: 'Unknown'\n};\n\n// Initialize dashboard topics\nconst messages = [];\n\n// Power displays\nmessages.push({topic: 'pv/power', payload: 0});\nmessages.push({topic: 'genset/power', payload: 0});\nmessages.push({topic: 'grid/power', payload: 0});\nmessages.push({topic: 'load/power', payload: 0});\n\n// Status displays\nmessages.push({topic: 'pv/status', payload: 'Offline'});\nmessages.push({topic: 'genset/status', payload: 'Stopped'});\nmessages.push({topic: 'grid/status', payload: 'Unknown'});\nmessages.push({topic: 'system/mode', payload: 'Initializing'});\n\n// Efficiency and performance\nmessages.push({topic: 'pv/efficiency', payload: 0});\nmessages.push({topic: 'system/efficiency', payload: 0});\nmessages.push({topic: 'genset/fuel', payload: 100});\n\n// Energy counters\nmessages.push({topic: 'energy/pv_daily', payload: 0});\nmessages.push({topic: 'energy/genset_daily', payload: 0});\nmessages.push({topic: 'energy/grid_daily', payload: 0});\n\nnode.log('Dashboard initialized');\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 60,
+        "wires": [
+            ["dashboard-router"]
+        ]
+    },
+    {
+        "id": "real-time-updater",
+        "type": "inject",
+        "z": "ui-tab",
+        "name": "Real-time Update",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "2",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "update",
+        "payloadType": "str",
+        "x": 120,
+        "y": 120,
+        "wires": [
+            ["data-aggregator"]
+        ]
+    },
+    {
+        "id": "data-aggregator",
+        "type": "function",
+        "z": "ui-tab",
+        "name": "Data Aggregator",
+        "func": "// Aggregate data from all systems for dashboard display\n\n// Get latest data from global context\nconst pvData = global.get('pv_data') || {};\nconst gensetData = global.get('genset_data') || {};\nconst gridData = global.get('power_meter_data') || {};\nconst systemState = global.get('system_state') || {};\nconst controlDecisions = global.get('control_decisions') || {};\nconst dailyStats = context.get('daily_stats') || {};\n\n// Check for emergency conditions\nconst emergency = global.get('emergency_stop') || false;\nconst manualOverride = global.get('manual_override') || false;\n\n// Calculate derived values\nconst totalGeneration = (pvData.ac_power || 0) + (gensetData.ac_power || 0);\nconst loadPower = totalGeneration + (gridData.total_active_power || 0);\nconst systemEfficiency = totalGeneration > 0 ? (loadPower / totalGeneration) * 100 : 0;\nconst pvContribution = totalGeneration > 0 ? ((pvData.ac_power || 0) / totalGeneration) * 100 : 0;\n\n// Determine system mode\nlet systemMode = 'Unknown';\nif (emergency) {\n    systemMode = '🚨 EMERGENCY STOP';\n} else if (manualOverride) {\n    systemMode = '👤 Manual Override';\n} else if (gridData.grid_connected) {\n    systemMode = '🔌 Grid Connected';\n} else {\n    systemMode = '🏝️ Off Grid';\n}\n\n// Create dashboard messages\nconst messages = [];\n\n// Power values\nmessages.push({topic: 'pv/power', payload: pvData.ac_power || 0});\nmessages.push({topic: 'genset/power', payload: gensetData.ac_power || 0});\nmessages.push({topic: 'grid/power', payload: gridData.total_active_power || 0});\nmessages.push({topic: 'load/power', payload: Math.round(loadPower)});\nmessages.push({topic: 'total/generation', payload: Math.round(totalGeneration)});\n\n// Status indicators\nmessages.push({topic: 'pv/status', payload: pvData.status === 3 ? '✅ Normal' : '⚠️ Fault'});\nmessages.push({topic: 'genset/status', payload: gensetData.running ? '🟢 Running' : '🔴 Stopped'});\nmessages.push({topic: 'grid/status', payload: gridData.grid_connected ? '🟢 Connected' : '🔴 Disconnected'});\nmessages.push({topic: 'system/mode', payload: systemMode});\n\n// Performance metrics\nmessages.push({topic: 'pv/efficiency', payload: Math.round(pvData.efficiency || 0)});\nmessages.push({topic: 'system/efficiency', payload: Math.round(systemEfficiency)});\nmessages.push({topic: 'pv/contribution', payload: Math.round(pvContribution)});\n\n// Environmental data\nmessages.push({topic: 'pv/temperature', payload: pvData.temperature || 0});\nmessages.push({topic: 'genset/temperature', payload: gensetData.engine_temp || 0});\nmessages.push({topic: 'genset/fuel', payload: gensetData.fuel_level || 0});\nmessages.push({topic: 'genset/oil_pressure', payload: gensetData.oil_pressure || 0});\n\n// Grid parameters\nmessages.push({topic: 'grid/voltage', payload: Math.round((gridData.l1_voltage + gridData.l2_voltage + gridData.l3_voltage) / 3) || 0});\nmessages.push({topic: 'grid/frequency', payload: gridData.frequency || 0});\nmessages.push({topic: 'grid/power_factor', payload: gridData.power_factor || 0});\n\n// Control status\nmessages.push({topic: 'control/pv_curtailment', payload: controlDecisions.pv_curtailment || 0});\nmessages.push({topic: 'control/genset_target', payload: controlDecisions.genset_target_power || 0});\nmessages.push({topic: 'control/export_limit', payload: controlDecisions.export_limit_active ? 'Active' : 'Inactive'});\n\n// Daily statistics\nmessages.push({topic: 'energy/pv_daily', payload: Math.round(dailyStats.total_pv_energy || 0)});\nmessages.push({topic: 'energy/genset_daily', payload: Math.round(dailyStats.total_genset_energy || 0)});\nmessages.push({topic: 'energy/fuel_consumed', payload: Math.round(dailyStats.estimated_fuel_consumed || 0)});\n\n// Power flow diagram data\nconst powerFlow = {\n    pv: pvData.ac_power || 0,\n    genset: gensetData.ac_power || 0,\n    load: loadPower,\n    grid: gridData.total_active_power || 0,\n    battery: 0 // Placeholder for future battery integration\n};\nmessages.push({topic: 'powerflow/data', payload: powerFlow});\n\n// Alerts summary\nconst activeAlerts = context.get('active_alerts') || [];\nconst criticalAlerts = activeAlerts.filter(alert => alert.type === 'critical').length;\nconst warningAlerts = activeAlerts.filter(alert => alert.type === 'warning').length;\n\nmessages.push({topic: 'alerts/critical', payload: criticalAlerts});\nmessages.push({topic: 'alerts/warning', payload: warningAlerts});\nmessages.push({topic: 'alerts/total', payload: activeAlerts.length});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 120,
+        "wires": [
+            ["dashboard-router"]
+        ]
+    },
+    {
+        "id": "dashboard-router",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Dashboard Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "regex",
+                "v": "^pv/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^genset/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^grid/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^system/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^energy/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^control/",
+                "vt": "str"
+            },
+            {
+                "t": "regex",
+                "v": "^alerts/",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 7,
+        "x": 540,
+        "y": 120,
+        "wires": [
+            ["pv-widgets"],
+            ["genset-widgets"],
+            ["grid-widgets"],
+            ["system-widgets"],
+            ["energy-widgets"],
+            ["control-widgets"],
+            ["alert-widgets"]
+        ]
+    },
+    {
+        "id": "pv-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "PV Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "pv/power",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "pv/status",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "pv/efficiency",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "pv/temperature",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 4,
+        "x": 740,
+        "y": 60,
+        "wires": [
+            ["pv-power-gauge"],
+            ["pv-status-text"],
+            ["pv-efficiency-gauge"],
+            ["pv-temp-gauge"]
+        ]
+    },
+    {
+        "id": "pv-power-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "PV Power",
+        "group": "pv-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "PV Power",
+        "label": "W",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "10000",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "3000",
+        "seg2": "7000",
+        "className": "",
+        "x": 960,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "pv-status-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "pv-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "PV Status",
+        "label": "Status:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 960,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "pv-efficiency-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "PV Efficiency",
+        "group": "pv-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "donut",
+        "title": "Efficiency",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "70",
+        "seg2": "85",
+        "className": "",
+        "x": 970,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "pv-temp-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "PV Temperature",
+        "group": "pv-group",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "wave",
+        "title": "Temperature",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "50",
+        "seg2": "70",
+        "className": "",
+        "x": 980,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "genset-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Genset Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "genset/power",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "genset/status",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "genset/fuel",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "genset/temperature",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "genset/oil_pressure",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 5,
+        "x": 750,
+        "y": 120,
+        "wires": [
+            ["genset-power-gauge"],
+            ["genset-status-text"],
+            ["genset-fuel-gauge"],
+            ["genset-temp-gauge"],
+            ["genset-oil-gauge"]
+        ]
+    },
+    {
+        "id": "genset-power-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Genset Power",
+        "group": "genset-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Genset Power",
+        "label": "W",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "15000",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "5000",
+        "seg2": "12000",
+        "className": "",
+        "x": 980,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "genset-status-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "genset-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Genset Status",
+        "label": "Status:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "genset-fuel-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Fuel Level",
+        "group": "genset-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "donut",
+        "title": "Fuel Level",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "20",
+        "seg2": "50",
+        "className": "",
+        "x": 970,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "genset-temp-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Engine Temp",
+        "group": "genset-group",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "wave",
+        "title": "Engine Temp",
+        "label": "°C",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "120",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "80",
+        "seg2": "95",
+        "className": "",
+        "x": 970,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "genset-oil-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Oil Pressure",
+        "group": "genset-group",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Oil Pressure",
+        "label": "bar",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "6",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "2",
+        "seg2": "4",
+        "className": "",
+        "x": 980,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "grid-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Grid Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "grid/power",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "grid/status",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "grid/voltage",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "grid/frequency",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "grid/power_factor",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 5,
+        "x": 740,
+        "y": 180,
+        "wires": [
+            ["grid-power-chart"],
+            ["grid-status-text"],
+            ["grid-voltage-gauge"],
+            ["grid-freq-gauge"],
+            ["grid-pf-gauge"]
+        ]
+    },
+    {
+        "id": "grid-power-chart",
+        "type": "ui_chart",
+        "z": "ui-tab",
+        "name": "Grid Power",
+        "group": "grid-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "label": "Grid Power (Import/Export)",
+        "chartType": "line",
+        "legend": "false",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "No Data",
+        "dot": false,
+        "ymin": "-10000",
+        "ymax": "10000",
+        "removeOlder": "10",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "60",
+        "cutout": 0,
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 970,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "grid-status-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "grid-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Grid Status",
+        "label": "Grid:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 970,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "grid-voltage-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Grid Voltage",
+        "group": "grid-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Voltage",
+        "label": "V",
+        "format": "{{value}}",
+        "min": "180",
+        "max": "260",
+        "colors": [
+            "#ca3838",
+            "#00b500",
+            "#ca3838"
+        ],
+        "seg1": "200",
+        "seg2": "250",
+        "className": "",
+        "x": 980,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "grid-freq-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Grid Frequency",
+        "group": "grid-group",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Frequency",
+        "label": "Hz",
+        "format": "{{value}}",
+        "min": "47",
+        "max": "53",
+        "colors": [
+            "#ca3838",
+            "#00b500",
+            "#ca3838"
+        ],
+        "seg1": "49",
+        "seg2": "51",
+        "className": "",
+        "x": 980,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "grid-pf-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Power Factor",
+        "group": "grid-group",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "gtype": "donut",
+        "title": "Power Factor",
+        "label": "",
+        "format": "{{value}}",
+        "min": "0",
+        "max": "1",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "0.8",
+        "seg2": "0.9",
+        "className": "",
+        "x": 980,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "system-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "System Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "system/mode",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "system/efficiency",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "load/power",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "total/generation",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "pv/contribution",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 5,
+        "x": 750,
+        "y": 240,
+        "wires": [
+            ["system-mode-text"],
+            ["system-efficiency-gauge"],
+            ["load-power-gauge"],
+            ["generation-gauge"],
+            ["pv-contribution-gauge"]
+        ]
+    },
+    {
+        "id": "system-mode-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "system-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "System Mode",
+        "label": "Mode:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "system-efficiency-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "System Efficiency",
+        "group": "system-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "gtype": "donut",
+        "title": "System Efficiency",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "70",
+        "seg2": "85",
+        "className": "",
+        "x": 1000,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "load-power-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Load Power",
+        "group": "system-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Load Power",
+        "label": "W",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "20000",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "10000",
+        "seg2": "15000",
+        "className": "",
+        "x": 980,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "generation-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "Total Generation",
+        "group": "system-group",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Total Generation",
+        "label": "W",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "25000",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "10000",
+        "seg2": "20000",
+        "className": "",
+        "x": 990,
+        "y": 720,
+        "wires": []
+    },
+    {
+        "id": "pv-contribution-gauge",
+        "type": "ui_gauge",
+        "z": "ui-tab",
+        "name": "PV Contribution",
+        "group": "system-group",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "gtype": "donut",
+        "title": "PV Contribution",
+        "label": "%",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "30",
+        "seg2": "60",
+        "className": "",
+        "x": 1000,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "energy-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Energy Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "energy/pv_daily",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "energy/genset_daily",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "energy/fuel_consumed",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 750,
+        "y": 300,
+        "wires": [
+            ["pv-energy-text"],
+            ["genset-energy-text"],
+            ["fuel-consumed-text"]
+        ]
+    },
+    {
+        "id": "pv-energy-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "energy-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "PV Energy Today",
+        "label": "PV Energy Today:",
+        "format": "{{msg.payload}} kWh",
+        "layout": "row-spread",
+        "className": "",
+        "x": 990,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "genset-energy-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "energy-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Genset Energy Today",
+        "label": "Genset Energy Today:",
+        "format": "{{msg.payload}} kWh",
+        "layout": "row-spread",
+        "className": "",
+        "x": 1000,
+        "y": 840,
+        "wires": []
+    },
+    {
+        "id": "fuel-consumed-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "energy-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Fuel Consumed Today",
+        "label": "Fuel Consumed Today:",
+        "format": "{{msg.payload}} L",
+        "layout": "row-spread",
+        "className": "",
+        "x": 1000,
+        "y": 880,
+        "wires": []
+    },
+    {
+        "id": "control-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Control Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "control/pv_curtailment",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "control/genset_target",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "control/export_limit",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 750,
+        "y": 360,
+        "wires": [
+            ["pv-curtailment-text"],
+            ["genset-target-text"],
+            ["export-limit-text"]
+        ]
+    },
+    {
+        "id": "pv-curtailment-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "control-status-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "PV Curtailment",
+        "label": "PV Curtailment:",
+        "format": "{{msg.payload}} W",
+        "layout": "row-spread",
+        "className": "",
+        "x": 990,
+        "y": 920,
+        "wires": []
+    },
+    {
+        "id": "genset-target-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "control-status-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Genset Target",
+        "label": "Genset Target:",
+        "format": "{{msg.payload}} W",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 960,
+        "wires": []
+    },
+    {
+        "id": "export-limit-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "control-status-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Export Limit",
+        "label": "Export Limit:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 1000,
+        "wires": []
+    },
+    {
+        "id": "alert-widgets",
+        "type": "switch",
+        "z": "ui-tab",
+        "name": "Alert Widget Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "alerts/critical",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "alerts/warning",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "alerts/total",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 740,
+        "y": 420,
+        "wires": [
+            ["critical-alerts-text"],
+            ["warning-alerts-text"],
+            ["total-alerts-text"]
+        ]
+    },
+    {
+        "id": "critical-alerts-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "alerts-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Critical Alerts",
+        "label": "🚨 Critical:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 1040,
+        "wires": []
+    },
+    {
+        "id": "warning-alerts-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "alerts-group",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Warning Alerts",
+        "label": "⚠️ Warnings:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 980,
+        "y": 1080,
+        "wires": []
+    },
+    {
+        "id": "total-alerts-text",
+        "type": "ui_text",
+        "z": "ui-tab",
+        "group": "alerts-group",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "name": "Total Alerts",
+        "label": "Total Alerts:",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 970,
+        "y": 1120,
+        "wires": []
+    },
+    {
+        "id": "power-flow-diagram",
+        "type": "ui_template",
+        "z": "ui-tab",
+        "group": "powerflow-group",
+        "name": "Power Flow Diagram",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "format": "<div id=\"powerflow\" style=\"width: 100%; height: 400px;\">\n  <svg width=\"100%\" height=\"100%\" viewBox=\"0 0 600 300\">\n    <!-- PV Panel -->\n    <rect x=\"50\" y=\"50\" width=\"80\" height=\"40\" fill=\"#FFD700\" stroke=\"#000\" stroke-width=\"2\"/>\n    <text x=\"90\" y=\"75\" text-anchor=\"middle\" font-size=\"12\">PV</text>\n    <text x=\"90\" y=\"105\" text-anchor=\"middle\" font-size=\"10\" id=\"pv-power\">{{pvPower}}W</text>\n    \n    <!-- Genset -->\n    <rect x=\"50\" y=\"200\" width=\"80\" height=\"40\" fill=\"#FF6B6B\" stroke=\"#000\" stroke-width=\"2\"/>\n    <text x=\"90\" y=\"225\" text-anchor=\"middle\" font-size=\"12\">Genset</text>\n    <text x=\"90\" y=\"255\" text-anchor=\"middle\" font-size=\"10\" id=\"genset-power\">{{gensetPower}}W</text>\n    \n    <!-- Load -->\n    <rect x=\"450\" y=\"125\" width=\"80\" height=\"40\" fill=\"#4ECDC4\" stroke=\"#000\" stroke-width=\"2\"/>\n    <text x=\"490\" y=\"150\" text-anchor=\"middle\" font-size=\"12\">Load</text>\n    <text x=\"490\" y=\"180\" text-anchor=\"middle\" font-size=\"10\" id=\"load-power\">{{loadPower}}W</text>\n    \n    <!-- Grid -->\n    <rect x=\"250\" y=\"250\" width=\"80\" height=\"40\" fill=\"#45B7D1\" stroke=\"#000\" stroke-width=\"2\"/>\n    <text x=\"290\" y=\"275\" text-anchor=\"middle\" font-size=\"12\">Grid</text>\n    <text x=\"290\" y=\"305\" text-anchor=\"middle\" font-size=\"10\" id=\"grid-power\">{{gridPower}}W</text>\n    \n    <!-- Power Flow Lines -->\n    <!-- PV to Load -->\n    <line x1=\"130\" y1=\"70\" x2=\"450\" y2=\"145\" stroke=\"#00FF00\" stroke-width=\"3\" id=\"pv-line\"/>\n    <text x=\"290\" y=\"100\" text-anchor=\"middle\" font-size=\"10\" fill=\"#00FF00\">PV → Load</text>\n    \n    <!-- Genset to Load -->\n    <line x1=\"130\" y1=\"220\" x2=\"450\" y2=\"145\" stroke=\"#FF0000\" stroke-width=\"3\" id=\"genset-line\"/>\n    <text x=\"290\" y=\"190\" text-anchor=\"middle\" font-size=\"10\" fill=\"#FF0000\">Genset → Load</text>\n    \n    <!-- Grid Connection -->\n    <line x1=\"290\" y1=\"250\" x2=\"490\" y2=\"165\" stroke=\"#0000FF\" stroke-width=\"3\" id=\"grid-line\"/>\n    <text x=\"390\" y=\"210\" text-anchor=\"middle\" font-size=\"10\" fill=\"#0000FF\" id=\"grid-direction\">{{gridDirection}}</text>\n  </svg>\n</div>\n\n<script>\n(function(scope) {\n  scope.$watch('msg', function(msg) {\n    if (msg && msg.topic === 'powerflow/data') {\n      var data = msg.payload;\n      \n      // Update power values\n      document.getElementById('pv-power').textContent = data.pv + 'W';\n      document.getElementById('genset-power').textContent = data.genset + 'W';\n      document.getElementById('load-power').textContent = data.load + 'W';\n      document.getElementById('grid-power').textContent = Math.abs(data.grid) + 'W';\n      \n      // Update grid direction\n      var gridDirection = data.grid > 0 ? 'Grid → Load' : data.grid < 0 ? 'Load → Grid' : 'No Flow';\n      document.getElementById('grid-direction').textContent = gridDirection;\n      \n      // Update line thickness based on power flow\n      var pvLine = document.getElementById('pv-line');\n      var gensetLine = document.getElementById('genset-line');\n      var gridLine = document.getElementById('grid-line');\n      \n      pvLine.style.strokeWidth = Math.max(1, data.pv / 1000);\n      gensetLine.style.strokeWidth = Math.max(1, data.genset / 1000);\n      gridLine.style.strokeWidth = Math.max(1, Math.abs(data.grid) / 1000);\n      \n      // Update colors based on status\n      if (data.pv > 100) {\n        pvLine.style.stroke = '#00FF00';\n      } else {\n        pvLine.style.stroke = '#CCCCCC';\n      }\n      \n      if (data.genset > 100) {\n        gensetLine.style.stroke = '#FF0000';\n      } else {\n        gensetLine.style.stroke = '#CCCCCC';\n      }\n      \n      if (data.grid > 100) {\n        gridLine.style.stroke = '#0000FF'; // Import\n      } else if (data.grid < -100) {\n        gridLine.style.stroke = '#FF8C00'; // Export\n      } else {\n        gridLine.style.stroke = '#CCCCCC'; // No flow\n      }\n    }\n  });\n})(scope);\n</script>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 580,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "historical-data-chart",
+        "type": "ui_chart",
+        "z": "ui-tab",
+        "name": "Power History",
+        "group": "history-group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "label": "System Power History",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm",
+        "interpolate": "linear",
+        "nodata": "No Historical Data",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "",
+        "removeOlder": "6",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": 0,
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#FFD700",
+            "#FF6B6B",
+            "#45B7D1",
+            "#4ECDC4"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 580,
+        "y": 540,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "history-data-feeder",
+        "type": "inject",
+        "z": "ui-tab",
+        "name": "History Update",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "60",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "history",
+        "payloadType": "str",
+        "x": 130,
+        "y": 540,
+        "wires": [
+            ["history-formatter"]
+        ]
+    },
+    {
+        "id": "history-formatter",
+        "type": "function",
+        "z": "ui-tab",
+        "name": "History Data Formatter",
+        "func": "// Format data for historical chart\nconst pvData = global.get('pv_data') || {};\nconst gensetData = global.get('genset_data') || {};\nconst gridData = global.get('power_meter_data') || {};\nconst systemState = global.get('system_state') || {};\n\nconst timestamp = new Date();\n\n// Create data points for chart\nconst messages = [];\n\n// PV Power\nmessages.push({\n    topic: 'history',\n    payload: {\n        series: ['PV Power'],\n        data: [[pvData.ac_power || 0]],\n        labels: [timestamp]\n    }\n});\n\n// Genset Power\nmessages.push({\n    topic: 'history',\n    payload: {\n        series: ['Genset Power'],\n        data: [[gensetData.ac_power || 0]],\n        labels: [timestamp]\n    }\n});\n\n// Grid Power\nmessages.push({\n    topic: 'history',\n    payload: {\n        series: ['Grid Power'],\n        data: [[gridData.total_active_power || 0]],\n        labels: [timestamp]\n    }\n});\n\n// Load Power\nmessages.push({\n    topic: 'history',\n    payload: {\n        series: ['Load Power'],\n        data: [[systemState.load_power || 0]],\n        labels: [timestamp]\n    }\n});\n\nreturn [messages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 540,
+        "wires": [
+            ["historical-data-chart"]
+        ]
+    },
+    {
+        "id": "alerts-list",
+        "type": "ui_template",
+        "z": "ui-tab",
+        "group": "alerts-detail-group",
+        "name": "Active Alerts List",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "format": "<div ng-init=\"init()\">\n  <h3>Active Alerts</h3>\n  <div ng-if=\"alerts.length === 0\" style=\"color: #00b500; font-weight: bold;\">\n    ✅ No active alerts\n  </div>\n  <div ng-repeat=\"alert in alerts | orderBy:'-timestamp'\" \n       ng-class=\"{\n         'alert-critical': alert.type === 'critical',\n         'alert-warning': alert.type === 'warning',\n         'alert-info': alert.type === 'info'\n       }\"\n       style=\"margin: 5px 0; padding: 10px; border-radius: 5px; border-left: 4px solid;\">\n    <div style=\"font-weight: bold;\">{{alert.device.toUpperCase()}}</div>\n    <div>{{alert.message}}</div>\n    <div style=\"font-size: 11px; color: #666;\">{{alert.timestamp | date:'medium'}}</div>\n  </div>\n</div>\n\n<style>\n.alert-critical {\n  background-color: #ffe6e6;\n  border-left-color: #ff0000 !important;\n}\n.alert-warning {\n  background-color: #fff3cd;\n  border-left-color: #ffc107 !important;\n}\n.alert-info {\n  background-color: #e7f3ff;\n  border-left-color: #17a2b8 !important;\n}\n</style>\n\n<script>\n(function(scope) {\n  scope.alerts = [];\n  \n  scope.init = function() {\n    // Initialize alerts array\n    scope.alerts = [];\n  };\n  \n  scope.$watch('msg', function(msg) {\n    if (msg && msg.topic === 'alerts/list') {\n      scope.alerts = msg.payload || [];\n    }\n  });\n})(scope);\n</script>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 580,
+        "y": 600,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "alerts-updater",
+        "type": "inject",
+        "z": "ui-tab",
+        "name": "Update Alerts",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "15",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "alerts",
+        "payloadType": "str",
+        "x": 130,
+        "y": 600,
+        "wires": [
+            ["alerts-formatter"]
+        ]
+    },
+    {
+        "id": "alerts-formatter",
+        "type": "function",
+        "z": "ui-tab",
+        "name": "Alerts Formatter",
+        "func": "// Get active alerts and format for display\nconst activeAlerts = context.get('active_alerts') || [];\n\n// Clean up old alerts (older than 24 hours)\nconst now = new Date();\nconst cleanedAlerts = activeAlerts.filter(alert => {\n    const alertTime = new Date(alert.timestamp);\n    const hoursOld = (now - alertTime) / (1000 * 60 * 60);\n    return hoursOld < 24;\n});\n\n// Update cleaned alerts\ncontext.set('active_alerts', cleanedAlerts);\n\nmsg.topic = 'alerts/list';\nmsg.payload = cleanedAlerts;\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 600,
+        "wires": [
+            ["alerts-list"]
+        ]
+    },
+    {
+        "id": "pv-group",
+        "type": "ui_group",
+        "name": "PV Inverter",
+        "tab": "overview-tab",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "genset-group",
+        "type": "ui_group",
+        "name": "Genset",
+        "tab": "overview-tab",
+        "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "grid-group",
+        "type": "ui_group",
+        "name": "Grid & Power Meter",
+        "tab": "overview-tab",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "system-group",
+        "type": "ui_group",
+        "name": "System Overview",
+        "tab": "overview-tab",
+        "order": 4,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "energy-group",
+        "type": "ui_group",
+        "name": "Daily Energy",
+        "tab": "overview-tab",
+        "order": 5,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "control-status-group",
+        "type": "ui_group",
+        "name": "Control Status",
+        "tab": "overview-tab",
+        "order": 6,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "alerts-group",
+        "type": "ui_group",
+        "name": "Alerts Summary",
+        "tab": "overview-tab",
+        "order": 7,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "powerflow-group",
+        "type": "ui_group",
+        "name": "Power Flow",
+        "tab": "monitoring-tab",
+        "order": 1,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "history-group",
+        "type": "ui_group",
+        "name": "Historical Data",
+        "tab": "monitoring-tab",
+        "order": 2,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "alerts-detail-group",
+        "type": "ui_group",
+        "name": "Alert Details",
+        "tab": "monitoring-tab",
+        "order": 3,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "overview-tab",
+        "type": "ui_tab",
+        "name": "Overview",
+        "icon": "dashboard",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "monitoring-tab",
+        "type": "ui_tab",
+        "name": "Monitoring",
+        "icon": "show_chart",
+        "order": 3,
+        "disabled": false,
+        "hidden": false
+    }
+]

@@ -1,0 +1,51 @@
+{
+  "name": "pv-grid-monitoring-system",
+  "version": "1.0.0",
+  "description": "Node-RED project for monitoring and controlling PV inverters, gensets, and grid connections",
+  "main": "index.js",
+  "scripts": {
+    "start": "node-red",
+    "dev": "node-red --verbose",
+    "install-flows": "npm run copy-flows",
+    "copy-flows": "cp -r flows/* ~/.node-red/",
+    "backup-flows": "cp ~/.node-red/flows.json ./backup/"
+  },
+  "keywords": [
+    "node-red",
+    "solar",
+    "pv",
+    "inverter",
+    "genset",
+    "grid",
+    "monitoring",
+    "control",
+    "modbus",
+    "energy"
+  ],
+  "author": "PV Grid Monitoring System",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "node-red": "^3.1.0",
+    "node-red-contrib-modbus": "^5.25.0",
+    "node-red-dashboard": "^3.6.0",
+    "node-red-contrib-influxdb": "^0.6.1",
+    "node-red-node-sqlite": "^1.0.3",
+    "node-red-node-mysql": "^1.0.3",
+    "node-red-node-email": "^2.0.0",
+    "node-red-contrib-telegrambot": "^15.1.1",
+    "node-red-contrib-fs-ops": "^1.6.0",
+    "node-red-contrib-cron-plus": "^1.5.1",
+    "node-red-contrib-moment": "^4.0.0",
+    "node-red-contrib-buffer-parser": "^4.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MohammadBilalRasheed/ecom.git"
+  }
+}
