@@ -61,7 +61,6 @@ module.exports = {
     flowFilePretty: true,
 
     // User Directory Settings
-    userDir: './data/',
 
     // Admin Auth
     adminAuth: {
